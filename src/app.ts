@@ -1,4 +1,5 @@
 import express, { type ErrorRequestHandler } from 'express';
+import { ApiError } from './utils/api-error.js';
 
 const app = express();
 
@@ -12,11 +13,21 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.use(((err, _req, res, _next) => {
+  if (err instanceof ApiError) {
+    res.status(err.statusCode).json({
+      success: false,
+      message: err.message,
+      errors: err.errors,
+    });
+    return;
+  }
+
   console.error(err);
 
   res.status(500).json({
     success: false,
     message: 'Internal server error',
+    errors: null,
   });
 }) as ErrorRequestHandler);
 
