@@ -1,6 +1,7 @@
 import express, { type ErrorRequestHandler } from 'express';
 import { ApiError } from './utils/api-error.js';
 import authRouter from './routes/auth.route.js';
+import userRouter from './routes/user.route.js';
 
 const app = express();
 
@@ -14,6 +15,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.use('/api/auth', authRouter);
+app.use('/api/users', userRouter);
 
 app.use(((err, _req, res, _next) => {
   if (err instanceof ApiError) {
