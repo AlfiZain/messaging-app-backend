@@ -21,4 +21,10 @@ export const registerSchema = z.object({
     .max(50, 'Display name must be 1-50 characters'),
 });
 
+export const loginSchema = z.object({
+  identifier: z.string().trim().min(1, 'Username or email is required'),
+  password: z.string().min(1, 'Password is required'),
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>;
+export type LoginInput = z.infer<typeof loginSchema>;
