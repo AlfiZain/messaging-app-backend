@@ -1,9 +1,20 @@
 import request from 'supertest';
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
 import app from '../../src/app.js';
 import { prisma } from '../../src/lib/prisma.js';
+
+const createUniqueUserData = () => {
+  const uuid = crypto.randomUUID().slice(0, 8);
+  return {
+    username: `user_${uuid}`,
+    email: `user_${uuid}@email.com`,
+    password: 'Password123#',
+    displayName: `User ${uuid}`,
+  };
+};
 
 describe('Auth API', () => {
   beforeEach(async () => {
@@ -17,12 +28,11 @@ describe('Auth API', () => {
 
   describe('POST /api/auth/register', () => {
     it('register a new user', async () => {
-      const response = await request(app).post('/api/auth/register').send({
-        username: 'alice',
-        email: 'alice@email.com',
-        password: 'Password123#',
-        displayName: 'Alice',
-      });
+      const userData = createUniqueUserData();
+
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send(userData);
 
       expect(response.status).toBe(201);
       expect(response.body).toEqual({
@@ -31,9 +41,9 @@ describe('Auth API', () => {
         data: {
           token: expect.any(String),
           user: expect.objectContaining({
-            username: 'alice',
-            email: 'alice@email.com',
-            displayName: 'Alice',
+            username: userData.username,
+            email: userData.email,
+            displayName: userData.displayName,
           }),
         },
       });
@@ -41,30 +51,31 @@ describe('Auth API', () => {
 
       const user = await prisma.user.findUnique({
         where: {
-          username: 'alice',
+          username: userData.username,
         },
       });
 
       expect(user).not.toBeNull();
-      expect(user?.password).not.toBe('Password123#');
+      expect(user?.password).not.toBe(userData.password);
     });
 
     it('rejects duplicate username', async () => {
+      const existingUser = createUniqueUserData();
       await prisma.user.create({
         data: {
-          username: 'alice',
-          email: 'alice@example.com',
+          ...existingUser,
           password: 'hashed-password',
-          displayName: 'Alice',
         },
       });
 
-      const response = await request(app).post('/api/auth/register').send({
-        username: 'alice',
-        email: 'another@example.com',
-        password: 'Password123#',
-        displayName: 'Another Alice',
-      });
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send({
+          username: existingUser.username,
+          email: `another_${crypto.randomUUID().slice(0, 8)}@example.com`,
+          password: 'Password123#',
+          displayName: 'Another User',
+        });
 
       expect(response.status).toBe(409);
       expect(response.body).toEqual({
@@ -75,21 +86,22 @@ describe('Auth API', () => {
     });
 
     it('rejects duplicate email', async () => {
+      const existingUser = createUniqueUserData();
       await prisma.user.create({
         data: {
-          username: 'alice',
-          email: 'alice@example.com',
+          ...existingUser,
           password: 'hashed-password',
-          displayName: 'Alice',
         },
       });
 
-      const response = await request(app).post('/api/auth/register').send({
-        username: 'another',
-        email: 'alice@example.com',
-        password: 'Password123#',
-        displayName: 'Another Alice',
-      });
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send({
+          username: `another_${crypto.randomUUID().slice(0, 8)}`,
+          email: existingUser.email,
+          password: 'Password123#',
+          displayName: 'Another User',
+        });
 
       expect(response.status).toBe(409);
       expect(response.body).toEqual({
@@ -174,19 +186,19 @@ describe('Auth API', () => {
 
   describe('POST /api/auth/login', () => {
     it('allows user to login with username', async () => {
-      const hashedPassword = await bcrypt.hash('Password123#', 10);
+      const userData = createUniqueUserData();
+      const hashedPassword = await bcrypt.hash(userData.password, 10);
+
       await prisma.user.create({
         data: {
-          username: 'alice',
-          email: 'alice@email.com',
+          ...userData,
           password: hashedPassword,
-          displayName: 'Alice',
         },
       });
 
       const response = await request(app).post('/api/auth/login').send({
-        identifier: 'alice',
-        password: 'Password123#',
+        identifier: userData.username,
+        password: userData.password,
       });
 
       expect(response.status).toBe(200);
@@ -196,9 +208,9 @@ describe('Auth API', () => {
         data: {
           token: expect.any(String),
           user: expect.objectContaining({
-            username: 'alice',
-            email: 'alice@email.com',
-            displayName: 'Alice',
+            username: userData.username,
+            email: userData.email,
+            displayName: userData.displayName,
           }),
         },
       });
@@ -206,19 +218,19 @@ describe('Auth API', () => {
     });
 
     it('allows user to login with email', async () => {
-      const hashedPassword = await bcrypt.hash('Password123#', 10);
+      const userData = createUniqueUserData();
+      const hashedPassword = await bcrypt.hash(userData.password, 10);
+
       await prisma.user.create({
         data: {
-          username: 'alice',
-          email: 'alice@email.com',
+          ...userData,
           password: hashedPassword,
-          displayName: 'Alice',
         },
       });
 
       const response = await request(app).post('/api/auth/login').send({
-        identifier: 'alice@email.com',
-        password: 'Password123#',
+        identifier: userData.email,
+        password: userData.password,
       });
 
       expect(response.status).toBe(200);
@@ -228,9 +240,9 @@ describe('Auth API', () => {
         data: {
           token: expect.any(String),
           user: expect.objectContaining({
-            username: 'alice',
-            email: 'alice@email.com',
-            displayName: 'Alice',
+            username: userData.username,
+            email: userData.email,
+            displayName: userData.displayName,
           }),
         },
       });
@@ -238,10 +250,12 @@ describe('Auth API', () => {
     });
 
     it('rejects non-existent identifier', async () => {
-      const response = await request(app).post('/api/auth/login').send({
-        identifier: 'nonexistent',
-        password: 'Password123#',
-      });
+      const response = await request(app)
+        .post('/api/auth/login')
+        .send({
+          identifier: `nonexistent_${crypto.randomUUID().slice(0, 8)}`,
+          password: 'Password123#',
+        });
 
       expect(response.status).toBe(401);
       expect(response.body).toEqual({
@@ -252,18 +266,18 @@ describe('Auth API', () => {
     });
 
     it('rejects incorrect password', async () => {
-      const hashedPassword = await bcrypt.hash('Password123#', 10);
+      const userData = createUniqueUserData();
+      const hashedPassword = await bcrypt.hash(userData.password, 10);
+
       await prisma.user.create({
         data: {
-          username: 'alice',
-          email: 'alice@email.com',
+          ...userData,
           password: hashedPassword,
-          displayName: 'Alice',
         },
       });
 
       const response = await request(app).post('/api/auth/login').send({
-        identifier: 'alice',
+        identifier: userData.username,
         password: 'WrongPassword123#',
       });
 

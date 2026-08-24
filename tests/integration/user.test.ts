@@ -1,8 +1,19 @@
 import request from 'supertest';
+import crypto from 'crypto';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
 import app from '../../src/app.js';
 import { prisma } from '../../src/lib/prisma.js';
+
+const createUniqueUserData = () => {
+  const uuid = crypto.randomUUID().slice(0, 8);
+  return {
+    username: `user_${uuid}`,
+    email: `user_${uuid}@example.com`,
+    password: 'Password123#',
+    displayName: `User ${uuid}`,
+  };
+};
 
 describe('Users API', () => {
   beforeEach(async () => {
@@ -16,14 +27,11 @@ describe('Users API', () => {
 
   describe('GET /api/users/me', () => {
     it('returns the authenticated user', async () => {
+      const userData = createUniqueUserData();
+
       const registerResponse = await request(app)
         .post('/api/auth/register')
-        .send({
-          username: 'alice',
-          email: 'alice@example.com',
-          password: 'Password123#',
-          displayName: 'Alice',
-        });
+        .send(userData);
 
       const token = registerResponse.body.data.token;
 
@@ -37,9 +45,9 @@ describe('Users API', () => {
         message: 'User retrieved successfully',
         data: {
           user: expect.objectContaining({
-            username: 'alice',
-            email: 'alice@example.com',
-            displayName: 'Alice',
+            username: userData.username,
+            email: userData.email,
+            displayName: userData.displayName,
           }),
         },
       });
