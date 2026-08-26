@@ -29,3 +29,22 @@ export async function createUser(userData: {
     },
   });
 }
+
+export async function updateUserProfile(
+  userId: string,
+  userData: {
+    displayName: string;
+    bio?: string | null;
+    avatarUrl?: string | null;
+  },
+) {
+  return prisma.user.update({
+    where: {
+      id: userId,
+    },
+    data: userData,
+    omit: {
+      password: true,
+    },
+  });
+}

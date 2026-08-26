@@ -10,3 +10,13 @@ export async function getMe(req: Request, res: Response) {
     data: { user },
   });
 }
+
+export async function updateProfile(req: Request, res: Response) {
+  const user = await userService.updateUserProfile(req.userId!, req.body);
+
+  return res.status(200).json({
+    success: true,
+    message: 'Profile updated successfully',
+    data: { user },
+  });
+}
