@@ -20,3 +20,13 @@ export async function updateProfile(req: Request, res: Response) {
     data: { user },
   });
 }
+
+export async function changePassword(req: Request, res: Response) {
+  await userService.changeUserPassword(req.userId!, req.body);
+
+  return res.status(200).json({
+    success: true,
+    message: 'Password changed successfully',
+    data: null,
+  });
+}

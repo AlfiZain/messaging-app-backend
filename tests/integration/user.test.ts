@@ -215,4 +215,138 @@ describe('Users API', () => {
       expect(response.body.errors).toBeInstanceOf(Array);
     });
   });
+
+  describe('PATCH /api/users/me/password', () => {
+    let token: string;
+    let userData: ReturnType<typeof createUniqueUserData>;
+
+    beforeEach(async () => {
+      userData = createUniqueUserData();
+      const registerResponse = await request(app)
+        .post('/api/auth/register')
+        .send(userData);
+
+      token = registerResponse.body.data.token;
+    });
+
+    it('changes the user password successfully', async () => {
+      const response = await request(app)
+        .patch('/api/users/me/password')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          currentPassword: userData.password,
+          newPassword: 'newPassword123#',
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        success: true,
+        message: 'Password changed successfully',
+        data: null,
+      });
+    });
+
+    it('rejects an incorrect current password', async () => {
+      const response = await request(app)
+        .patch('/api/users/me/password')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          currentPassword: 'wrongpassword',
+          newPassword: 'newPassword123#',
+        });
+
+      expect(response.status).toBe(401);
+      expect(response.body).toEqual({
+        success: false,
+        message: 'Invalid credentials',
+        errors: null,
+      });
+    });
+
+    describe('Password Schema Validation', () => {
+      it('rejects password without uppercase letter', async () => {
+        const response = await request(app)
+          .patch('/api/users/me/password')
+          .set('Authorization', `Bearer ${token}`)
+          .send({
+            currentPassword: userData.password,
+            newPassword: 'password123#',
+          });
+
+        expect(response.status).toBe(400);
+        expect(response.body.success).toBe(false);
+        expect(response.body.message).toBe('Validation failed');
+        expect(response.body.errors).toBeInstanceOf(Array);
+      });
+
+      it('rejects password without lowercase letter', async () => {
+        const response = await request(app)
+          .patch('/api/users/me/password')
+          .set('Authorization', `Bearer ${token}`)
+          .send({
+            currentPassword: userData.password,
+            newPassword: 'PASSWORD123#',
+          });
+
+        expect(response.status).toBe(400);
+        expect(response.body.success).toBe(false);
+        expect(response.body.message).toBe('Validation failed');
+        expect(response.body.errors).toBeInstanceOf(Array);
+      });
+
+      it('rejects password without numbers', async () => {
+        const response = await request(app)
+          .patch('/api/users/me/password')
+          .set('Authorization', `Bearer ${token}`)
+          .send({
+            currentPassword: userData.password,
+            newPassword: 'Password#',
+          });
+
+        expect(response.status).toBe(400);
+        expect(response.body.success).toBe(false);
+        expect(response.body.message).toBe('Validation failed');
+        expect(response.body.errors).toBeInstanceOf(Array);
+      });
+
+      it('rejects password without special characters', async () => {
+        const response = await request(app)
+          .patch('/api/users/me/password')
+          .set('Authorization', `Bearer ${token}`)
+          .send({
+            currentPassword: userData.password,
+            newPassword: 'Password123',
+          });
+
+        expect(response.status).toBe(400);
+        expect(response.body.success).toBe(false);
+        expect(response.body.message).toBe('Validation failed');
+        expect(response.body.errors).toBeInstanceOf(Array);
+      });
+
+      it('rejects new password if identical to current password', async () => {
+        const response = await request(app)
+          .patch('/api/users/me/password')
+          .set('Authorization', `Bearer ${token}`)
+          .send({
+            currentPassword: userData.password,
+            newPassword: userData.password,
+          });
+
+        expect(response.status).toBe(400);
+        expect(response.body.success).toBe(false);
+        expect(response.body.message).toBe('Validation failed');
+        expect(response.body.errors).toBeInstanceOf(Array);
+      });
+    });
+
+    it('rejects an unauthenticated request', async () => {
+      const response = await request(app).patch('/api/users/me/password').send({
+        currentPassword: 'Password123#',
+        newPassword: 'newPassword123#',
+      });
+
+      expect(response.status).toBe(401);
+    });
+  });
 });

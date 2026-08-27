@@ -2,7 +2,10 @@ import { Router } from 'express';
 import { authenticate } from '../middlewares/auth.middleware.js';
 import * as userController from '../controllers/user.controller.js';
 import { validate } from '../middlewares/validate.js';
-import { updateProfileSchema } from '../schemas/user.schema.js';
+import {
+  changePasswordSchema,
+  updateProfileSchema,
+} from '../schemas/user.schema.js';
 
 const userRouter = Router();
 
@@ -12,6 +15,12 @@ userRouter.patch(
   authenticate,
   validate(updateProfileSchema),
   userController.updateProfile,
+);
+userRouter.patch(
+  '/me/password',
+  authenticate,
+  validate(changePasswordSchema),
+  userController.changePassword,
 );
 
 export default userRouter;

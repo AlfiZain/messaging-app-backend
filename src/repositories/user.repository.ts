@@ -48,3 +48,17 @@ export async function updateUserProfile(
     },
   });
 }
+
+export async function changeUserPassword(userId: string, password: string) {
+  return prisma.user.update({
+    where: {
+      id: userId,
+    },
+    data: {
+      password,
+    },
+    omit: {
+      password: true,
+    },
+  });
+}
