@@ -33,6 +33,7 @@ model User {
 
 model Conversation {
   id        String   @id @default(uuid(7)) @db.Uuid
+  directKey String?  @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

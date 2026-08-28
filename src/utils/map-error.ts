@@ -39,6 +39,13 @@ function mapPrismaError(error: Prisma.PrismaClientKnownRequestError) {
     case 'P2025': {
       return new ApiError(404, 'Resource not found');
     }
+    case 'P2006':
+    case 'P2007': {
+      return new ApiError(
+        400,
+        'Invalid input format or invalid UUID parameter',
+      );
+    }
     default: {
       return new ApiError(500, 'Database error');
     }
