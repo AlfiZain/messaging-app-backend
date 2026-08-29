@@ -2,20 +2,30 @@ import type { NextFunction, Request, Response } from 'express';
 import type { ZodType } from 'zod';
 import { ApiError } from '../utils/api-error.js';
 
-export function validate(schema: ZodType) {
+type ValidationTarget = 'body' | 'query' | 'params';
+
+export function validate(
+  schema: ZodType,
+  target: ValidationTarget | ValidationTarget[] = 'body',
+) {
   return (req: Request, _res: Response, next: NextFunction) => {
-    const result = schema.safeParse(req.body);
+    const targets = Array.isArray(target) ? target : [target];
 
-    if (!result.success) {
-      const formattedErrors = result.error.issues.map((issue) => ({
-        field: issue.path.join('.'),
-        message: issue.message,
-      }));
+    for (const t of targets) {
+      const result = schema.safeParse(req[t]);
 
-      return next(new ApiError(400, 'Validation failed', formattedErrors));
+      if (!result.success) {
+        const formattedErrors = result.error.issues.map((issue) => ({
+          field: issue.path.join('.'),
+          message: issue.message,
+        }));
+
+        return next(new ApiError(400, 'Validation failed', formattedErrors));
+      }
+
+      req[t] = result.data;
     }
 
-    req.body = result.data;
     next();
   };
 }
