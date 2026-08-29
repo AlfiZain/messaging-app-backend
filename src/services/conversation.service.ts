@@ -22,3 +22,7 @@ export async function createDirectConversation(
 
   return conversationRepository.upsertDirectConversation(directKey, userIds);
 }
+
+export async function getUserConversations(userId: string) {
+  return conversationRepository.findConversationsByUserId(userId);
+}

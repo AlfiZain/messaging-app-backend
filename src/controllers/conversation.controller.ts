@@ -13,3 +13,15 @@ export async function createDirectConversation(req: Request, res: Response) {
     data: { conversation },
   });
 }
+
+export async function getConversations(req: Request, res: Response) {
+  const conversations = await conversationService.getUserConversations(
+    req.userId!,
+  );
+
+  return res.status(200).json({
+    success: true,
+    message: 'Conversations retrieved successfully',
+    data: { conversations },
+  });
+}

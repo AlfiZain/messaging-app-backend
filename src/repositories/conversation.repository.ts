@@ -32,3 +32,31 @@ export async function upsertDirectConversation(
     },
   });
 }
+
+export async function findConversationsByUserId(userId: string) {
+  return prisma.conversation.findMany({
+    where: {
+      participants: {
+        some: {
+          userId,
+        },
+      },
+    },
+    include: {
+      participants: {
+        select: {
+          user: {
+            select: {
+              id: true,
+              displayName: true,
+              avatarUrl: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: {
+      updatedAt: 'desc',
+    },
+  });
+}

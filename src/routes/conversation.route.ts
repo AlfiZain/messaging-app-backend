@@ -13,4 +13,10 @@ conversationRouter.post(
   conversationController.createDirectConversation,
 );
 
+conversationRouter.get(
+  '/',
+  authenticate,
+  conversationController.getConversations,
+);
+
 export default conversationRouter;

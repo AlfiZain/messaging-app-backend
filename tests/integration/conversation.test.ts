@@ -246,3 +246,174 @@ describe('POST /api/conversations/direct', () => {
     expect(await prisma.conversationParticipant.count()).toBe(2);
   });
 });
+
+describe('GET /api/conversations', () => {
+  beforeEach(async () => {
+    await prisma.message.deleteMany();
+    await prisma.conversationParticipant.deleteMany();
+    await prisma.conversation.deleteMany();
+    await prisma.user.deleteMany();
+  });
+
+  afterAll(async () => {
+    await prisma.message.deleteMany();
+    await prisma.conversationParticipant.deleteMany();
+    await prisma.conversation.deleteMany();
+    await prisma.user.deleteMany();
+    await prisma.$disconnect();
+  });
+
+  it('returns conversations belonging to the authenticated user', async () => {
+    const alice = await registerUser();
+    const bob = await registerUser();
+    const charlie = await registerUser();
+
+    await request(app)
+      .post('/api/conversations/direct')
+      .set('Authorization', `Bearer ${alice.token}`)
+      .send({
+        userId: bob.user.id,
+      });
+
+    await request(app)
+      .post('/api/conversations/direct')
+      .set('Authorization', `Bearer ${alice.token}`)
+      .send({
+        userId: charlie.user.id,
+      });
+
+    const response = await request(app)
+      .get('/api/conversations')
+      .set('Authorization', `Bearer ${alice.token}`);
+
+    expect(response.status).toBe(200);
+
+    expect(response.body.success).toBe(true);
+    expect(response.body.message).toBe('Conversations retrieved successfully');
+
+    expect(response.body.data.conversations).toHaveLength(2);
+
+    for (const conversation of response.body.data.conversations) {
+      expect(conversation.participants).toHaveLength(2);
+
+      expect(
+        conversation.participants.some(
+          (participant: { user: { id: string } }) =>
+            participant.user.id === alice.user.id,
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it('does not return conversations belonging to another user', async () => {
+    const alice = await registerUser();
+    const bob = await registerUser();
+    const charlie = await registerUser();
+    const david = await registerUser();
+
+    await request(app)
+      .post('/api/conversations/direct')
+      .set('Authorization', `Bearer ${alice.token}`)
+      .send({
+        userId: bob.user.id,
+      });
+
+    await request(app)
+      .post('/api/conversations/direct')
+      .set('Authorization', `Bearer ${charlie.token}`)
+      .send({
+        userId: david.user.id,
+      });
+
+    const response = await request(app)
+      .get('/api/conversations')
+      .set('Authorization', `Bearer ${alice.token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.conversations).toHaveLength(1);
+
+    const conversation = response.body.data.conversations[0];
+
+    expect(
+      conversation.participants.some(
+        (participant: { user: { id: string } }) =>
+          participant.user.id === bob.user.id,
+      ),
+    ).toBe(true);
+
+    expect(
+      conversation.participants.some(
+        (participant: { user: { id: string } }) =>
+          participant.user.id === charlie.user.id,
+      ),
+    ).toBe(false);
+  });
+
+  it('returns an empty array when the user has no conversations', async () => {
+    const alice = await registerUser();
+
+    const response = await request(app)
+      .get('/api/conversations')
+      .set('Authorization', `Bearer ${alice.token}`);
+
+    expect(response.status).toBe(200);
+
+    expect(response.body).toEqual({
+      success: true,
+      message: 'Conversations retrieved successfully',
+      data: {
+        conversations: [],
+      },
+    });
+  });
+
+  it('returns conversations ordered by updatedAt descending', async () => {
+    const alice = await registerUser();
+    const bob = await registerUser();
+    const charlie = await registerUser();
+
+    const firstResponse = await request(app)
+      .post('/api/conversations/direct')
+      .set('Authorization', `Bearer ${alice.token}`)
+      .send({
+        userId: bob.user.id,
+      });
+
+    const firstConversationId = firstResponse.body.data.conversation.id;
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const secondResponse = await request(app)
+      .post('/api/conversations/direct')
+      .set('Authorization', `Bearer ${alice.token}`)
+      .send({
+        userId: charlie.user.id,
+      });
+
+    const secondConversationId = secondResponse.body.data.conversation.id;
+
+    const response = await request(app)
+      .get('/api/conversations')
+      .set('Authorization', `Bearer ${alice.token}`);
+
+    expect(response.status).toBe(200);
+
+    expect(
+      response.body.data.conversations.map(
+        (conversation: { id: string }) => conversation.id,
+      ),
+    ).toEqual([secondConversationId, firstConversationId]);
+  });
+
+  it('rejects an unauthenticated request', async () => {
+    const response = await request(app).get('/api/conversations');
+
+    expect(response.status).toBe(401);
+
+    expect(response.body).toEqual({
+      success: false,
+      message: 'Authentication required',
+      errors: null,
+    });
+  });
+});
