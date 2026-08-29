@@ -26,3 +26,19 @@ export async function createDirectConversation(
 export async function getUserConversations(userId: string) {
   return conversationRepository.findConversationsByUserId(userId);
 }
+
+export async function getDetailUserConversation(
+  conversationId: string,
+  userId: string,
+) {
+  const conversation = await conversationRepository.findUserConversationById(
+    conversationId,
+    userId,
+  );
+
+  if (!conversation) {
+    throw new ApiError(404, 'Conversation not found');
+  }
+
+  return conversation;
+}

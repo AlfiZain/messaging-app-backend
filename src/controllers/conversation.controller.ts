@@ -25,3 +25,16 @@ export async function getConversations(req: Request, res: Response) {
     data: { conversations },
   });
 }
+
+export async function getDetailUserConversation(req: Request, res: Response) {
+  const conversation = await conversationService.getDetailUserConversation(
+    req.params.conversationId as string,
+    req.userId!,
+  );
+
+  return res.status(200).json({
+    success: true,
+    message: 'Conversation retrieved successfully',
+    data: { conversation },
+  });
+}

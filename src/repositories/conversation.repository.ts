@@ -60,3 +60,32 @@ export async function findConversationsByUserId(userId: string) {
     },
   });
 }
+
+export async function findUserConversationById(
+  conversationId: string,
+  userId: string,
+) {
+  return prisma.conversation.findUnique({
+    where: {
+      id: conversationId,
+      participants: {
+        some: {
+          userId,
+        },
+      },
+    },
+    include: {
+      participants: {
+        select: {
+          user: {
+            select: {
+              id: true,
+              displayName: true,
+              avatarUrl: true,
+            },
+          },
+        },
+      },
+    },
+  });
+}
