@@ -6,6 +6,7 @@ import {
   getDetailUserConversationParamsSchema,
 } from '../schemas/conversation.schema.js';
 import * as conversationController from '../controllers/conversation.controller.js';
+import { nestedMessageRouter } from './message.route.js';
 
 const conversationRouter = Router();
 
@@ -28,5 +29,7 @@ conversationRouter.get(
   validate(getDetailUserConversationParamsSchema, 'params'),
   conversationController.getDetailUserConversation,
 );
+
+conversationRouter.use('/:conversationId/messages', nestedMessageRouter);
 
 export default conversationRouter;
