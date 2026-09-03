@@ -8,6 +8,12 @@ export const getDetailUserConversationParamsSchema = z.object({
   conversationId: z.uuid({ message: 'Conversation Id must be a valid UUID' }),
 });
 
+export const joinConversationSchema = z.object({
+  conversationId: z.uuid({
+    message: 'Conversation ID must be a valid UUID',
+  }),
+});
+
 export type CreateDirectConversationInput = z.infer<
   typeof createDirectConversationSchema
 >;

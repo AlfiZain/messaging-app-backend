@@ -42,3 +42,23 @@ export async function getDetailUserConversation(
 
   return conversation;
 }
+
+export async function validateAndGetConversation(
+  conversationId: string | undefined,
+  userId: string,
+) {
+  if (!conversationId) {
+    throw new Error('Converastion ID is required');
+  }
+
+  const conversation = await conversationRepository.findUserConversationById(
+    conversationId,
+    userId,
+  );
+
+  if (!conversation) {
+    throw new Error('Conversation not found');
+  }
+
+  return conversation;
+}
