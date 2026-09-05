@@ -13,7 +13,6 @@ export const updateProfileSchema = z.object({
     .max(250, 'Bio must not exceed 250 characters')
     .nullable()
     .optional(),
-  avatarUrl: z.url().nullable().optional(),
 });
 
 export const changePasswordSchema = z

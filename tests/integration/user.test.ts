@@ -148,26 +148,10 @@ describe('Users API', () => {
       expect(response.body.data.user).not.toHaveProperty('password');
     });
 
-    it('updates avatarUrl successfully', async () => {
-      const updatedData = {
-        avatarUrl: 'https://example.com/new-avatar.png',
-      };
-
-      const response = await request(app)
-        .patch('/api/users/me')
-        .set('Authorization', `Bearer ${token}`)
-        .send(updatedData);
-
-      expect(response.status).toBe(200);
-      expect(response.body.data.user.avatarUrl).toBe(updatedData.avatarUrl);
-      expect(response.body.data.user).not.toHaveProperty('password');
-    });
-
     it('updates multiple fields simultaneously', async () => {
       const updatedData = {
         displayName: 'Updated Name',
         bio: 'Updated bio content',
-        avatarUrl: 'https://example.com/new-avatar.png',
       };
 
       const response = await request(app)
