@@ -1,10 +1,20 @@
 import request from 'supertest';
 import crypto from 'crypto';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
 import app from '../../src/app.js';
 import { prisma } from '../../src/lib/prisma.js';
-import { User } from '../../src/generated/prisma/client.js';
+import { uploadImageToCloudinary } from '../../src/lib/cloudinary.js';
+import { UploadApiResponse } from 'cloudinary';
+import { ApiError } from '../../src/utils/api-error.js';
 
 const createUniqueUserData = () => {
   const uuid = crypto.randomUUID().slice(0, 8);
@@ -15,6 +25,15 @@ const createUniqueUserData = () => {
     displayName: `User ${uuid}`,
   };
 };
+
+vi.mock('../../src/lib/cloudinary.js', () => ({
+  uploadImageToCloudinary: vi.fn(),
+}));
+
+vi.mocked(uploadImageToCloudinary).mockResolvedValue({
+  secure_url: 'https://res.cloudinary.com/test/avatar.jpg',
+  public_id: 'test-user',
+} as UploadApiResponse);
 
 describe('Users API', () => {
   beforeEach(async () => {
@@ -83,7 +102,6 @@ describe('Users API', () => {
 
   describe('PATCH /api/users/me', () => {
     let token: string;
-    let registeredUser: User;
 
     beforeEach(async () => {
       const userData = createUniqueUserData();
@@ -92,7 +110,6 @@ describe('Users API', () => {
         .send(userData);
 
       token = registerResponse.body.data.token;
-      registeredUser = registerResponse.body.data.user;
     });
 
     it('updates displayName successfully', async () => {
@@ -118,7 +135,6 @@ describe('Users API', () => {
 
     it('updates bio successfully', async () => {
       const updatedData = {
-        displayName: registeredUser.displayName,
         bio: 'Updated bio content',
       };
 
@@ -134,7 +150,6 @@ describe('Users API', () => {
 
     it('updates avatarUrl successfully', async () => {
       const updatedData = {
-        displayName: registeredUser.displayName,
         avatarUrl: 'https://example.com/new-avatar.png',
       };
 
@@ -169,7 +184,6 @@ describe('Users API', () => {
 
     it('allows setting bio and avatarUrl to null', async () => {
       const updatedData = {
-        displayName: registeredUser.displayName,
         bio: null,
         avatarUrl: null,
       };
@@ -200,7 +214,7 @@ describe('Users API', () => {
 
     it('rejects invalid input data with 400 status', async () => {
       const invalidData = {
-        displayName: 12345,
+        displayName: null,
         avatarUrl: 'not-a-valid-url',
       };
 
@@ -347,6 +361,144 @@ describe('Users API', () => {
       });
 
       expect(response.status).toBe(401);
+    });
+  });
+
+  describe('PATCH /api/users/me/avatar', () => {
+    afterEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('should update profile picture', async () => {
+      vi.mocked(uploadImageToCloudinary).mockResolvedValue({
+        secure_url: 'https://res.cloudinary.com/test/avatar.jpg',
+        public_id: 'test-user',
+      } as UploadApiResponse);
+
+      const userData = createUniqueUserData();
+
+      const registerResponse = await request(app)
+        .post('/api/auth/register')
+        .send(userData);
+
+      const token = registerResponse.body.data.token;
+
+      const response = await request(app)
+        .patch('/api/users/me/avatar')
+        .set('Authorization', `Bearer ${token}`)
+        .attach('avatar', Buffer.from('fake-image'), {
+          filename: 'avatar.jpg',
+          contentType: 'image/jpeg',
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.user.avatarUrl).toBe(
+        'https://res.cloudinary.com/test/avatar.jpg',
+      );
+
+      expect(uploadImageToCloudinary).toHaveBeenCalledTimes(1);
+      expect(uploadImageToCloudinary).toHaveBeenCalledWith(expect.any(Buffer), {
+        folder: 'messaging-app/avatars',
+        publicId: expect.any(String),
+        overwrite: true,
+      });
+    });
+
+    it('should reject avatar upload without a file', async () => {
+      const userData = createUniqueUserData();
+
+      const registerResponse = await request(app)
+        .post('/api/auth/register')
+        .send(userData);
+
+      const token = registerResponse.body.data.token;
+
+      const response = await request(app)
+        .patch('/api/users/me/avatar')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toBe('Avatar image is required');
+
+      expect(uploadImageToCloudinary).not.toHaveBeenCalled();
+    });
+
+    it('should reject unsupported file type', async () => {
+      const userData = createUniqueUserData();
+
+      const registerResponse = await request(app)
+        .post('/api/auth/register')
+        .send(userData);
+
+      const token = registerResponse.body.data.token;
+
+      const response = await request(app)
+        .patch('/api/users/me/avatar')
+        .set('Authorization', `Bearer ${token}`)
+        .attach('avatar', Buffer.from('text-file'), {
+          filename: 'document.txt',
+          contentType: 'text/plain',
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toBe(
+        'Invalid file type. Only JPEG, PNG, and WebP images are allowed',
+      );
+
+      expect(uploadImageToCloudinary).not.toHaveBeenCalled();
+    });
+
+    it('should reject avatar larger than 512 KB', async () => {
+      const userData = createUniqueUserData();
+
+      const registerResponse = await request(app)
+        .post('/api/auth/register')
+        .send(userData);
+
+      const token = registerResponse.body.data.token;
+
+      const largeFile = Buffer.alloc(1024 * 1024);
+
+      const response = await request(app)
+        .patch('/api/users/me/avatar')
+        .set('Authorization', `Bearer ${token}`)
+        .attach('avatar', largeFile, {
+          filename: 'large.jpg',
+          contentType: 'image/jpeg',
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toBe('File size must not exceed 512 KB');
+
+      expect(uploadImageToCloudinary).not.toHaveBeenCalled();
+    });
+
+    it('should return 502 when Cloudinary upload fails', async () => {
+      vi.mocked(uploadImageToCloudinary).mockRejectedValue(
+        new ApiError(502, 'Cloudinary upload failed'),
+      );
+
+      const userData = createUniqueUserData();
+
+      const registerResponse = await request(app)
+        .post('/api/auth/register')
+        .send(userData);
+
+      const token = registerResponse.body.data.token;
+
+      const response = await request(app)
+        .patch('/api/users/me/avatar')
+        .set('Authorization', `Bearer ${token}`)
+        .attach('avatar', Buffer.from('fake-image'), {
+          filename: 'avatar.jpg',
+          contentType: 'image/jpeg',
+        });
+
+      expect(response.status).toBe(502);
+      expect(response.body.message).toBe('Cloudinary upload failed');
+
+      expect(uploadImageToCloudinary).toHaveBeenCalledTimes(1);
     });
   });
 });

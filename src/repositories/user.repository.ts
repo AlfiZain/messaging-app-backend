@@ -33,7 +33,7 @@ export async function createUser(userData: {
 export async function updateUserProfile(
   userId: string,
   userData: {
-    displayName: string;
+    displayName?: string;
     bio?: string | null;
     avatarUrl?: string | null;
   },

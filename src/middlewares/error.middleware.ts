@@ -13,8 +13,8 @@ export function errorHandler(
 
   const error = mapError(err);
 
-  if (error.statusCode === 500) {
-    console.error('[UNHANDLED_ERROR]:', err);
+  if (error.statusCode >= 500) {
+    console.error('[SERVER_ERROR]:', err);
   }
 
   res.status(error.statusCode).json({

@@ -16,5 +16,11 @@ export const env = {
   databaseUrl: process.env.DATABASE_URL,
   jwtSecret,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '15m',
-  clientUrl: process.env.CLIENT_URL,
+  clientUrl: process.env.CLIENT_URL!,
+
+  cloudinary: {
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME!,
+    apiKey: process.env.CLOUDINARY_API_KEY!,
+    apiSecret: process.env.CLOUDINARY_API_SECRET!,
+  },
 };

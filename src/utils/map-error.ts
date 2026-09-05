@@ -1,5 +1,6 @@
 import { ApiError } from './api-error.js';
 import { Prisma } from '../generated/prisma/client.js';
+import multer from 'multer';
 
 export function mapError(error: unknown) {
   if (error instanceof ApiError) {
@@ -13,6 +14,12 @@ export function mapError(error: unknown) {
     'body' in error
   ) {
     return jsonError();
+  }
+
+  if (error instanceof multer.MulterError) {
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return new ApiError(400, 'File size must not exceed 512 KB');
+    }
   }
 
   if (error instanceof Prisma.PrismaClientKnownRequestError) {

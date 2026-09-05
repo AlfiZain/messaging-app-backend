@@ -6,6 +6,7 @@ import type {
   UpdateProfileInput,
 } from '../schemas/user.schema.js';
 import { ApiError } from '../utils/api-error.js';
+import { uploadImageToCloudinary } from '../lib/cloudinary.js';
 
 export async function getUserProfile(userId: string) {
   const user = await userRepository.findUserById(userId);
@@ -54,4 +55,29 @@ export async function changeUserPassword(
   const hashedNewPassword = await bcrypt.hash(userInput.newPassword, 10);
 
   return userRepository.changeUserPassword(userId, hashedNewPassword);
+}
+
+export async function updateUserAvatar(
+  userId: string,
+  file: Express.Multer.File | undefined,
+) {
+  const user = await userRepository.findUserById(userId);
+
+  if (!user) {
+    throw new ApiError(401, 'Invalid token');
+  }
+
+  if (!file) {
+    throw new ApiError(400, 'Avatar image is required');
+  }
+
+  const uploadedImage = await uploadImageToCloudinary(file.buffer, {
+    folder: 'messaging-app/avatars',
+    publicId: userId,
+    overwrite: true,
+  });
+
+  return userRepository.updateUserProfile(userId, {
+    avatarUrl: uploadedImage.secure_url,
+  });
 }

@@ -6,6 +6,7 @@ import {
   changePasswordSchema,
   updateProfileSchema,
 } from '../schemas/user.schema.js';
+import { uploadImage } from '../lib/multer.js';
 
 const userRouter = Router();
 
@@ -21,6 +22,12 @@ userRouter.patch(
   authenticate,
   validate(changePasswordSchema),
   userController.changePassword,
+);
+userRouter.patch(
+  '/me/avatar',
+  authenticate,
+  uploadImage.single('avatar'),
+  userController.updateAvatar,
 );
 
 export default userRouter;

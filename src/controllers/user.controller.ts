@@ -30,3 +30,13 @@ export async function changePassword(req: Request, res: Response) {
     data: null,
   });
 }
+
+export async function updateAvatar(req: Request, res: Response) {
+  const user = await userService.updateUserAvatar(req.userId!, req.file);
+
+  return res.status(200).json({
+    success: true,
+    message: 'Profile picture updated successfully',
+    data: { user },
+  });
+}
