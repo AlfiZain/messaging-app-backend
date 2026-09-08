@@ -3,6 +3,7 @@ import { authenticate } from '../middlewares/auth.middleware.js';
 import { validate } from '../middlewares/validate.middleware.js';
 import {
   createDirectConversationSchema,
+  createGroupConversationSchema,
   getDetailUserConversationParamsSchema,
 } from '../schemas/conversation.schema.js';
 import * as conversationController from '../controllers/conversation.controller.js';
@@ -15,6 +16,13 @@ conversationRouter.post(
   authenticate,
   validate(createDirectConversationSchema),
   conversationController.createDirectConversation,
+);
+
+conversationRouter.post(
+  '/group',
+  authenticate,
+  validate(createGroupConversationSchema),
+  conversationController.createGroupConversation,
 );
 
 conversationRouter.get(

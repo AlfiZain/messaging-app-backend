@@ -1,4 +1,7 @@
-import type { CreateDirectConversationInput } from '../schemas/conversation.schema.js';
+import type {
+  CreateDirectConversationInput,
+  CreateGroupConversationInput,
+} from '../schemas/conversation.schema.js';
 import { ApiError } from '../utils/api-error.js';
 import * as userRepository from '../repositories/user.repository.js';
 import * as conversationRepository from '../repositories/conversation.repository.js';
@@ -21,6 +24,27 @@ export async function createDirectConversation(
   const directKey = userIds.join(':');
 
   return conversationRepository.upsertDirectConversation(directKey, userIds);
+}
+
+export async function createGroupConversation(
+  currentUserId: string,
+  userInput: CreateGroupConversationInput,
+) {
+  const participantIds = [
+    currentUserId,
+    ...userInput.participantIds.filter((id) => currentUserId !== id),
+  ];
+
+  const users = await userRepository.findUserByIds(participantIds);
+
+  if (users.length !== participantIds.length) {
+    throw new ApiError(404, 'One or more users not found');
+  }
+
+  return conversationRepository.createGroupConversation(
+    userInput.name,
+    participantIds,
+  );
 }
 
 export async function getUserConversations(userId: string) {

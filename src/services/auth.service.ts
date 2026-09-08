@@ -8,7 +8,7 @@ import { generateAccessToken } from '../lib/jwt.js';
 export async function register(registerInput: RegisterInput) {
   const { username, email, password } = registerInput;
 
-  const existingUser = await userRepository.findByUsernameOrEmail(
+  const existingUser = await userRepository.findUserByUsernameOrEmail(
     username,
     email,
   );
@@ -34,7 +34,7 @@ export async function register(registerInput: RegisterInput) {
 
 export async function login(loginInput: LoginInput) {
   const { identifier, password } = loginInput;
-  const user = await userRepository.findByUsernameOrEmail(
+  const user = await userRepository.findUserByUsernameOrEmail(
     identifier,
     identifier,
   );

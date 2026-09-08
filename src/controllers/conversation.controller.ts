@@ -14,6 +14,19 @@ export async function createDirectConversation(req: Request, res: Response) {
   });
 }
 
+export async function createGroupConversation(req: Request, res: Response) {
+  const conversation = await conversationService.createGroupConversation(
+    req.userId!,
+    req.body,
+  );
+
+  return res.status(201).json({
+    success: true,
+    message: 'Group conversation created successfully',
+    data: { conversation },
+  });
+}
+
 export async function getConversations(req: Request, res: Response) {
   const conversations = await conversationService.getUserConversations(
     req.userId!,

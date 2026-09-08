@@ -32,10 +32,12 @@ model User {
 }
 
 model Conversation {
-  id        String   @id @default(uuid(7)) @db.Uuid
-  directKey String?  @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id        String           @id @default(uuid(7)) @db.Uuid
+  type      ConversationType @default(DIRECT)
+  directKey String?          @unique
+  name      String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
 
   participants ConversationParticipant[]
   messages     Message[]
@@ -69,4 +71,9 @@ model Message {
   @@index([conversationId, createdAt])
   @@index([senderId])
   @@map("messages")
+}
+
+enum ConversationType {
+  DIRECT
+  GROUP
 }

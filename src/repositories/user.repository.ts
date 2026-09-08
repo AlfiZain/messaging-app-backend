@@ -1,6 +1,22 @@
 import { prisma } from '../lib/prisma.js';
 
-export async function findByUsernameOrEmail(username: string, email: string) {
+export async function findUserByIds(ids: string[]) {
+  return prisma.user.findMany({
+    where: {
+      id: {
+        in: ids,
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+}
+
+export async function findUserByUsernameOrEmail(
+  username: string,
+  email: string,
+) {
   return prisma.user.findFirst({
     where: {
       OR: [{ username }, { email }],

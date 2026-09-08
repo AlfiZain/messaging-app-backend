@@ -27,7 +27,7 @@ const registerUser = async () => {
   };
 };
 
-describe('POST /api/conversations/direct', () => {
+describe('Conversation API', () => {
   beforeEach(async () => {
     await prisma.message.deleteMany();
     await prisma.conversationParticipant.deleteMany();
@@ -43,511 +43,769 @@ describe('POST /api/conversations/direct', () => {
     await prisma.$disconnect();
   });
 
-  it('creates a direct conversation between two users', async () => {
-    const user = await registerUser();
-    const targetUser = await registerUser();
+  describe('POST /api/conversations/direct', () => {
+    it('creates a direct conversation between two users', async () => {
+      const user = await registerUser();
+      const targetUser = await registerUser();
 
-    const response = await request(app)
-      .post('/api/conversations/direct')
-      .set('Authorization', `Bearer ${user.token}`)
-      .send({
-        userId: targetUser.user.id,
-      });
-
-    expect(response.status).toBe(201);
-
-    expect(response.body).toEqual({
-      success: true,
-      message: 'Conversation created successfully',
-      data: {
-        conversation: expect.objectContaining({
-          id: expect.any(String),
-          directKey: expect.any(String),
-          participants: expect.arrayContaining([
-            {
-              user: {
-                id: user.user.id,
-                displayName: user.user.displayName,
-                avatarUrl: null,
-              },
-            },
-            {
-              user: {
-                id: targetUser.user.id,
-                displayName: targetUser.user.displayName,
-                avatarUrl: null,
-              },
-            },
-          ]),
-        }),
-      },
-    });
-
-    expect(await prisma.conversation.count()).toBe(1);
-    expect(await prisma.conversationParticipant.count()).toBe(2);
-  });
-
-  it('returns the existing conversation instead of creating a duplicate', async () => {
-    const user = await registerUser();
-    const targetUser = await registerUser();
-
-    const firstResponse = await request(app)
-      .post('/api/conversations/direct')
-      .set('Authorization', `Bearer ${user.token}`)
-      .send({
-        userId: targetUser.user.id,
-      });
-
-    const secondResponse = await request(app)
-      .post('/api/conversations/direct')
-      .set('Authorization', `Bearer ${user.token}`)
-      .send({
-        userId: targetUser.user.id,
-      });
-
-    expect(firstResponse.status).toBe(201);
-    expect(secondResponse.status).toBe(201);
-
-    expect(secondResponse.body.data.conversation.id).toBe(
-      firstResponse.body.data.conversation.id,
-    );
-
-    expect(await prisma.conversation.count()).toBe(1);
-  });
-
-  it('returns the same conversation regardless of which user creates it', async () => {
-    const user = await registerUser();
-    const targetUser = await registerUser();
-
-    const firstResponse = await request(app)
-      .post('/api/conversations/direct')
-      .set('Authorization', `Bearer ${user.token}`)
-      .send({
-        userId: targetUser.user.id,
-      });
-
-    const secondResponse = await request(app)
-      .post('/api/conversations/direct')
-      .set('Authorization', `Bearer ${targetUser.token}`)
-      .send({
-        userId: user.user.id,
-      });
-
-    expect(firstResponse.status).toBe(201);
-    expect(secondResponse.status).toBe(201);
-
-    expect(secondResponse.body.data.conversation.id).toBe(
-      firstResponse.body.data.conversation.id,
-    );
-
-    expect(await prisma.conversation.count()).toBe(1);
-  });
-
-  it('rejects creating a conversation with yourself', async () => {
-    const user = await registerUser();
-
-    const response = await request(app)
-      .post('/api/conversations/direct')
-      .set('Authorization', `Bearer ${user.token}`)
-      .send({
-        userId: user.user.id,
-      });
-
-    expect(response.status).toBe(400);
-
-    expect(response.body).toEqual({
-      success: false,
-      message: 'Cannot create a conversation with yourself',
-      errors: null,
-    });
-
-    expect(await prisma.conversation.count()).toBe(0);
-  });
-
-  it('returns 404 when the target user does not exist', async () => {
-    const user = await registerUser();
-
-    const response = await request(app)
-      .post('/api/conversations/direct')
-      .set('Authorization', `Bearer ${user.token}`)
-      .send({
-        userId: '01999999-9999-7999-8999-999999999999',
-      });
-
-    expect(response.status).toBe(404);
-
-    expect(response.body).toEqual({
-      success: false,
-      message: 'User not found',
-      errors: null,
-    });
-
-    expect(await prisma.conversation.count()).toBe(0);
-  });
-
-  it('rejects an unauthenticated request', async () => {
-    const targetUser = await registerUser();
-
-    const response = await request(app).post('/api/conversations/direct').send({
-      userId: targetUser.user.id,
-    });
-
-    expect(response.status).toBe(401);
-
-    expect(response.body).toEqual({
-      success: false,
-      message: 'Authentication required',
-      errors: null,
-    });
-  });
-
-  it('rejects an invalid userId', async () => {
-    const user = await registerUser();
-
-    const response = await request(app)
-      .post('/api/conversations/direct')
-      .set('Authorization', `Bearer ${user.token}`)
-      .send({
-        userId: 'invalid-uuid',
-      });
-
-    expect(response.status).toBe(400);
-    expect(response.body.success).toBe(false);
-  });
-
-  it('does not create duplicate conversations under concurrent requests', async () => {
-    const user = await registerUser();
-    const targetUser = await registerUser();
-
-    const [firstResponse, secondResponse] = await Promise.all([
-      request(app)
+      const response = await request(app)
         .post('/api/conversations/direct')
         .set('Authorization', `Bearer ${user.token}`)
         .send({
           userId: targetUser.user.id,
-        }),
+        });
 
-      request(app)
+      expect(response.status).toBe(201);
+
+      expect(response.body).toEqual({
+        success: true,
+        message: 'Conversation created successfully',
+        data: {
+          conversation: expect.objectContaining({
+            id: expect.any(String),
+            directKey: expect.any(String),
+            participants: expect.arrayContaining([
+              {
+                user: {
+                  id: user.user.id,
+                  displayName: user.user.displayName,
+                  avatarUrl: null,
+                },
+              },
+              {
+                user: {
+                  id: targetUser.user.id,
+                  displayName: targetUser.user.displayName,
+                  avatarUrl: null,
+                },
+              },
+            ]),
+          }),
+        },
+      });
+
+      expect(await prisma.conversation.count()).toBe(1);
+      expect(await prisma.conversationParticipant.count()).toBe(2);
+    });
+
+    it('returns the existing conversation instead of creating a duplicate', async () => {
+      const user = await registerUser();
+      const targetUser = await registerUser();
+
+      const firstResponse = await request(app)
         .post('/api/conversations/direct')
         .set('Authorization', `Bearer ${user.token}`)
         .send({
           userId: targetUser.user.id,
-        }),
-    ]);
+        });
 
-    expect(firstResponse.status).toBe(201);
-    expect(secondResponse.status).toBe(201);
+      const secondResponse = await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${user.token}`)
+        .send({
+          userId: targetUser.user.id,
+        });
 
-    expect(firstResponse.body.data.conversation.id).toBe(
-      secondResponse.body.data.conversation.id,
-    );
+      expect(firstResponse.status).toBe(201);
+      expect(secondResponse.status).toBe(201);
 
-    expect(await prisma.conversation.count()).toBe(1);
-    expect(await prisma.conversationParticipant.count()).toBe(2);
-  });
-});
+      expect(secondResponse.body.data.conversation.id).toBe(
+        firstResponse.body.data.conversation.id,
+      );
 
-describe('GET /api/conversations', () => {
-  beforeEach(async () => {
-    await prisma.message.deleteMany();
-    await prisma.conversationParticipant.deleteMany();
-    await prisma.conversation.deleteMany();
-    await prisma.user.deleteMany();
-  });
+      expect(await prisma.conversation.count()).toBe(1);
+    });
 
-  afterAll(async () => {
-    await prisma.message.deleteMany();
-    await prisma.conversationParticipant.deleteMany();
-    await prisma.conversation.deleteMany();
-    await prisma.user.deleteMany();
-    await prisma.$disconnect();
-  });
+    it('returns the same conversation regardless of which user creates it', async () => {
+      const user = await registerUser();
+      const targetUser = await registerUser();
 
-  it('returns conversations belonging to the authenticated user', async () => {
-    const alice = await registerUser();
-    const bob = await registerUser();
-    const charlie = await registerUser();
+      const firstResponse = await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${user.token}`)
+        .send({
+          userId: targetUser.user.id,
+        });
 
-    await request(app)
-      .post('/api/conversations/direct')
-      .set('Authorization', `Bearer ${alice.token}`)
-      .send({
-        userId: bob.user.id,
+      const secondResponse = await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${targetUser.token}`)
+        .send({
+          userId: user.user.id,
+        });
+
+      expect(firstResponse.status).toBe(201);
+      expect(secondResponse.status).toBe(201);
+
+      expect(secondResponse.body.data.conversation.id).toBe(
+        firstResponse.body.data.conversation.id,
+      );
+
+      expect(await prisma.conversation.count()).toBe(1);
+    });
+
+    it('rejects creating a conversation with yourself', async () => {
+      const user = await registerUser();
+
+      const response = await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${user.token}`)
+        .send({
+          userId: user.user.id,
+        });
+
+      expect(response.status).toBe(400);
+
+      expect(response.body).toEqual({
+        success: false,
+        message: 'Cannot create a conversation with yourself',
+        errors: null,
       });
 
-    await request(app)
-      .post('/api/conversations/direct')
-      .set('Authorization', `Bearer ${alice.token}`)
-      .send({
-        userId: charlie.user.id,
+      expect(await prisma.conversation.count()).toBe(0);
+    });
+
+    it('returns 404 when the target user does not exist', async () => {
+      const user = await registerUser();
+
+      const response = await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${user.token}`)
+        .send({
+          userId: '01999999-9999-7999-8999-999999999999',
+        });
+
+      expect(response.status).toBe(404);
+
+      expect(response.body).toEqual({
+        success: false,
+        message: 'User not found',
+        errors: null,
       });
 
-    const response = await request(app)
-      .get('/api/conversations')
-      .set('Authorization', `Bearer ${alice.token}`);
+      expect(await prisma.conversation.count()).toBe(0);
+    });
 
-    expect(response.status).toBe(200);
+    it('rejects an unauthenticated request', async () => {
+      const targetUser = await registerUser();
 
-    expect(response.body.success).toBe(true);
-    expect(response.body.message).toBe('Conversations retrieved successfully');
+      const response = await request(app)
+        .post('/api/conversations/direct')
+        .send({
+          userId: targetUser.user.id,
+        });
 
-    expect(response.body.data.conversations).toHaveLength(2);
+      expect(response.status).toBe(401);
 
-    for (const conversation of response.body.data.conversations) {
+      expect(response.body).toEqual({
+        success: false,
+        message: 'Authentication required',
+        errors: null,
+      });
+    });
+
+    it('rejects an invalid userId', async () => {
+      const user = await registerUser();
+
+      const response = await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${user.token}`)
+        .send({
+          userId: 'invalid-uuid',
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+    });
+
+    it('does not create duplicate conversations under concurrent requests', async () => {
+      const user = await registerUser();
+      const targetUser = await registerUser();
+
+      const [firstResponse, secondResponse] = await Promise.all([
+        request(app)
+          .post('/api/conversations/direct')
+          .set('Authorization', `Bearer ${user.token}`)
+          .send({
+            userId: targetUser.user.id,
+          }),
+
+        request(app)
+          .post('/api/conversations/direct')
+          .set('Authorization', `Bearer ${user.token}`)
+          .send({
+            userId: targetUser.user.id,
+          }),
+      ]);
+
+      expect(firstResponse.status).toBe(201);
+      expect(secondResponse.status).toBe(201);
+
+      expect(firstResponse.body.data.conversation.id).toBe(
+        secondResponse.body.data.conversation.id,
+      );
+
+      expect(await prisma.conversation.count()).toBe(1);
+      expect(await prisma.conversationParticipant.count()).toBe(2);
+    });
+  });
+
+  describe('POST /api/conversations/group', () => {
+    it('should create a group conversation', async () => {
+      const creatorData = createUniqueUserData();
+      const participantData = createUniqueUserData();
+
+      const creatorResponse = await request(app)
+        .post('/api/auth/register')
+        .send(creatorData);
+
+      const participantResponse = await request(app)
+        .post('/api/auth/register')
+        .send(participantData);
+
+      const creatorToken = creatorResponse.body.data.token;
+      const participantId = participantResponse.body.data.user.id;
+
+      const response = await request(app)
+        .post('/api/conversations/group')
+        .set('Authorization', `Bearer ${creatorToken}`)
+        .send({
+          name: 'Frontend Team',
+          participantIds: [participantId],
+        });
+
+      expect(response.status).toBe(201);
+      expect(response.body.success).toBe(true);
+      expect(response.body.message).toBe(
+        'Group conversation created successfully',
+      );
+
+      const conversation = response.body.data.conversation;
+
+      expect(conversation.type).toBe('GROUP');
+      expect(conversation.name).toBe('Frontend Team');
       expect(conversation.participants).toHaveLength(2);
 
       expect(
         conversation.participants.some(
           (participant: { user: { id: string } }) =>
-            participant.user.id === alice.user.id,
+            participant.user.id === creatorResponse.body.data.user.id,
         ),
       ).toBe(true);
-    }
-  });
 
-  it('does not return conversations belonging to another user', async () => {
-    const alice = await registerUser();
-    const bob = await registerUser();
-    const charlie = await registerUser();
-    const david = await registerUser();
+      expect(
+        conversation.participants.some(
+          (participant: { user: { id: string } }) =>
+            participant.user.id === participantId,
+        ),
+      ).toBe(true);
+    });
 
-    await request(app)
-      .post('/api/conversations/direct')
-      .set('Authorization', `Bearer ${alice.token}`)
-      .send({
-        userId: bob.user.id,
-      });
+    it('should automatically add creator as a participant', async () => {
+      const creatorData = createUniqueUserData();
+      const participantData = createUniqueUserData();
 
-    await request(app)
-      .post('/api/conversations/direct')
-      .set('Authorization', `Bearer ${charlie.token}`)
-      .send({
-        userId: david.user.id,
-      });
+      const creatorResponse = await request(app)
+        .post('/api/auth/register')
+        .send(creatorData);
 
-    const response = await request(app)
-      .get('/api/conversations')
-      .set('Authorization', `Bearer ${alice.token}`);
+      const participantResponse = await request(app)
+        .post('/api/auth/register')
+        .send(participantData);
 
-    expect(response.status).toBe(200);
-    expect(response.body.data.conversations).toHaveLength(1);
+      const creatorToken = creatorResponse.body.data.token;
 
-    const conversation = response.body.data.conversations[0];
+      const response = await request(app)
+        .post('/api/conversations/group')
+        .set('Authorization', `Bearer ${creatorToken}`)
+        .send({
+          name: 'My Group',
+          participantIds: [participantResponse.body.data.user.id],
+        });
 
-    expect(
-      conversation.participants.some(
-        (participant: { user: { id: string } }) =>
-          participant.user.id === bob.user.id,
-      ),
-    ).toBe(true);
+      expect(response.status).toBe(201);
 
-    expect(
-      conversation.participants.some(
-        (participant: { user: { id: string } }) =>
-          participant.user.id === charlie.user.id,
-      ),
-    ).toBe(false);
-  });
+      const participants = response.body.data.conversation.participants;
 
-  it('returns an empty array when the user has no conversations', async () => {
-    const alice = await registerUser();
+      expect(participants).toHaveLength(2);
+      expect(
+        participants.some(
+          (participant: { user: { id: string } }) =>
+            participant.user.id === creatorResponse.body.data.user.id,
+        ),
+      ).toBe(true);
+    });
 
-    const response = await request(app)
-      .get('/api/conversations')
-      .set('Authorization', `Bearer ${alice.token}`);
+    it('should reject group creation when a participant does not exist', async () => {
+      const creatorData = createUniqueUserData();
 
-    expect(response.status).toBe(200);
+      const creatorResponse = await request(app)
+        .post('/api/auth/register')
+        .send(creatorData);
 
-    expect(response.body).toEqual({
-      success: true,
-      message: 'Conversations retrieved successfully',
-      data: {
-        conversations: [],
-      },
+      const creatorToken = creatorResponse.body.data.token;
+
+      const response = await request(app)
+        .post('/api/conversations/group')
+        .set('Authorization', `Bearer ${creatorToken}`)
+        .send({
+          name: 'Invalid Group',
+          participantIds: [crypto.randomUUID()],
+        });
+
+      expect(response.status).toBe(404);
+      expect(response.body.message).toBe('One or more users not found');
+    });
+
+    it('should reject group creation without participants', async () => {
+      const creatorData = createUniqueUserData();
+
+      const creatorResponse = await request(app)
+        .post('/api/auth/register')
+        .send(creatorData);
+
+      const creatorToken = creatorResponse.body.data.token;
+
+      const response = await request(app)
+        .post('/api/conversations/group')
+        .set('Authorization', `Bearer ${creatorToken}`)
+        .send({
+          name: 'Empty Group',
+          participantIds: [],
+        });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('should reject duplicate participant IDs', async () => {
+      const creatorData = createUniqueUserData();
+      const participantData = createUniqueUserData();
+
+      const creatorResponse = await request(app)
+        .post('/api/auth/register')
+        .send(creatorData);
+
+      const participantResponse = await request(app)
+        .post('/api/auth/register')
+        .send(participantData);
+
+      const creatorToken = creatorResponse.body.data.token;
+      const participantId = participantResponse.body.data.user.id;
+
+      const response = await request(app)
+        .post('/api/conversations/group')
+        .set('Authorization', `Bearer ${creatorToken}`)
+        .send({
+          name: 'Duplicate Group',
+          participantIds: [participantId, participantId],
+        });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('should reject invalid participant ID', async () => {
+      const creatorData = createUniqueUserData();
+
+      const creatorResponse = await request(app)
+        .post('/api/auth/register')
+        .send(creatorData);
+
+      const creatorToken = creatorResponse.body.data.token;
+
+      const response = await request(app)
+        .post('/api/conversations/group')
+        .set('Authorization', `Bearer ${creatorToken}`)
+        .send({
+          name: 'Invalid Group',
+          participantIds: ['invalid-uuid'],
+        });
+
+      expect(response.status).toBe(400);
     });
   });
 
-  it('returns conversations ordered by updatedAt descending', async () => {
-    const alice = await registerUser();
-    const bob = await registerUser();
-    const charlie = await registerUser();
+  describe('GET /api/conversations', () => {
+    it('returns direct conversations belonging to the authenticated user', async () => {
+      const alice = await registerUser();
+      const bob = await registerUser();
+      const charlie = await registerUser();
 
-    const firstResponse = await request(app)
-      .post('/api/conversations/direct')
-      .set('Authorization', `Bearer ${alice.token}`)
-      .send({
-        userId: bob.user.id,
+      await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${alice.token}`)
+        .send({
+          userId: bob.user.id,
+        });
+
+      await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${alice.token}`)
+        .send({
+          userId: charlie.user.id,
+        });
+
+      const response = await request(app)
+        .get('/api/conversations')
+        .set('Authorization', `Bearer ${alice.token}`);
+
+      expect(response.status).toBe(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.message).toBe(
+        'Conversations retrieved successfully',
+      );
+
+      expect(response.body.data.conversations).toHaveLength(2);
+
+      for (const conversation of response.body.data.conversations) {
+        expect(conversation.type).toBe('DIRECT');
+        expect(conversation.participants).toHaveLength(2);
+
+        expect(
+          conversation.participants.some(
+            (participant: { user: { id: string } }) =>
+              participant.user.id === alice.user.id,
+          ),
+        ).toBe(true);
+      }
+    });
+
+    it('returns group conversations belonging to the authenticated user', async () => {
+      const alice = await registerUser();
+      const bob = await registerUser();
+      const charlie = await registerUser();
+      const delta = await registerUser();
+
+      await request(app)
+        .post('/api/conversations/group')
+        .set('Authorization', `Bearer ${alice.token}`)
+        .send({
+          name: 'Backend Team',
+          participantIds: [bob.user.id, charlie.user.id],
+        });
+
+      await request(app)
+        .post('/api/conversations/group')
+        .set('Authorization', `Bearer ${alice.token}`)
+        .send({
+          name: 'Frontend Team',
+          participantIds: [charlie.user.id, delta.user.id],
+        });
+
+      const response = await request(app)
+        .get('/api/conversations')
+        .set('Authorization', `Bearer ${alice.token}`);
+
+      expect(response.status).toBe(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.message).toBe(
+        'Conversations retrieved successfully',
+      );
+
+      expect(response.body.data.conversations).toHaveLength(2);
+      expect(response.body.data.conversations[0].name).toBe('Frontend Team');
+      expect(response.body.data.conversations[1].name).toBe('Backend Team');
+
+      for (const conversation of response.body.data.conversations) {
+        expect(conversation.type).toBe('GROUP');
+
+        expect(
+          conversation.participants.some(
+            ({ user }: { user: { id: string } }) => user.id === alice.user.id,
+          ),
+        ).toBe(true);
+      }
+    });
+
+    it('does not return conversations belonging to another user', async () => {
+      const alice = await registerUser();
+      const bob = await registerUser();
+      const charlie = await registerUser();
+      const david = await registerUser();
+
+      await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${alice.token}`)
+        .send({
+          userId: bob.user.id,
+        });
+
+      await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${charlie.token}`)
+        .send({
+          userId: david.user.id,
+        });
+
+      const response = await request(app)
+        .get('/api/conversations')
+        .set('Authorization', `Bearer ${alice.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.conversations).toHaveLength(1);
+
+      const conversation = response.body.data.conversations[0];
+
+      expect(
+        conversation.participants.some(
+          (participant: { user: { id: string } }) =>
+            participant.user.id === bob.user.id,
+        ),
+      ).toBe(true);
+
+      expect(
+        conversation.participants.some(
+          (participant: { user: { id: string } }) =>
+            participant.user.id === charlie.user.id,
+        ),
+      ).toBe(false);
+    });
+
+    it('returns an empty array when the user has no conversations', async () => {
+      const alice = await registerUser();
+
+      const response = await request(app)
+        .get('/api/conversations')
+        .set('Authorization', `Bearer ${alice.token}`);
+
+      expect(response.status).toBe(200);
+
+      expect(response.body).toEqual({
+        success: true,
+        message: 'Conversations retrieved successfully',
+        data: {
+          conversations: [],
+        },
       });
+    });
 
-    const firstConversationId = firstResponse.body.data.conversation.id;
+    it('returns conversations ordered by updatedAt descending', async () => {
+      const alice = await registerUser();
+      const bob = await registerUser();
+      const charlie = await registerUser();
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+      const firstResponse = await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${alice.token}`)
+        .send({
+          userId: bob.user.id,
+        });
 
-    const secondResponse = await request(app)
-      .post('/api/conversations/direct')
-      .set('Authorization', `Bearer ${alice.token}`)
-      .send({
-        userId: charlie.user.id,
+      const firstConversationId = firstResponse.body.data.conversation.id;
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      const secondResponse = await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${alice.token}`)
+        .send({
+          userId: charlie.user.id,
+        });
+
+      const secondConversationId = secondResponse.body.data.conversation.id;
+
+      const response = await request(app)
+        .get('/api/conversations')
+        .set('Authorization', `Bearer ${alice.token}`);
+
+      expect(response.status).toBe(200);
+
+      expect(
+        response.body.data.conversations.map(
+          (conversation: { id: string }) => conversation.id,
+        ),
+      ).toEqual([secondConversationId, firstConversationId]);
+    });
+
+    it('rejects an unauthenticated request', async () => {
+      const response = await request(app).get('/api/conversations');
+
+      expect(response.status).toBe(401);
+
+      expect(response.body).toEqual({
+        success: false,
+        message: 'Authentication required',
+        errors: null,
       });
-
-    const secondConversationId = secondResponse.body.data.conversation.id;
-
-    const response = await request(app)
-      .get('/api/conversations')
-      .set('Authorization', `Bearer ${alice.token}`);
-
-    expect(response.status).toBe(200);
-
-    expect(
-      response.body.data.conversations.map(
-        (conversation: { id: string }) => conversation.id,
-      ),
-    ).toEqual([secondConversationId, firstConversationId]);
-  });
-
-  it('rejects an unauthenticated request', async () => {
-    const response = await request(app).get('/api/conversations');
-
-    expect(response.status).toBe(401);
-
-    expect(response.body).toEqual({
-      success: false,
-      message: 'Authentication required',
-      errors: null,
     });
   });
-});
 
-describe('GET /api/conversations/:conversationId', () => {
-  beforeEach(async () => {
-    await prisma.message.deleteMany();
-    await prisma.conversationParticipant.deleteMany();
-    await prisma.conversation.deleteMany();
-    await prisma.user.deleteMany();
-  });
+  describe('GET /api/conversations/:conversationId', () => {
+    it('returns a direct conversation belonging to the authenticated user', async () => {
+      const user = await registerUser();
+      const targetUser = await registerUser();
 
-  afterAll(async () => {
-    await prisma.message.deleteMany();
-    await prisma.conversationParticipant.deleteMany();
-    await prisma.conversation.deleteMany();
-    await prisma.user.deleteMany();
-    await prisma.$disconnect();
-  });
+      const createResponse = await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${user.token}`)
+        .send({
+          userId: targetUser.user.id,
+        });
 
-  it('returns a conversation belonging to the authenticated user', async () => {
-    const user = await registerUser();
-    const targetUser = await registerUser();
+      const conversationId = createResponse.body.data.conversation.id;
 
-    const createResponse = await request(app)
-      .post('/api/conversations/direct')
-      .set('Authorization', `Bearer ${user.token}`)
-      .send({
-        userId: targetUser.user.id,
-      });
+      const response = await request(app)
+        .get(`/api/conversations/${conversationId}`)
+        .set('Authorization', `Bearer ${user.token}`);
 
-    const conversationId = createResponse.body.data.conversation.id;
+      expect(response.status).toBe(200);
 
-    const response = await request(app)
-      .get(`/api/conversations/${conversationId}`)
-      .set('Authorization', `Bearer ${user.token}`);
-
-    expect(response.status).toBe(200);
-
-    expect(response.body).toEqual({
-      success: true,
-      message: 'Conversation retrieved successfully',
-      data: {
-        conversation: expect.objectContaining({
-          id: conversationId,
-          participants: expect.arrayContaining([
-            {
-              user: {
-                id: user.user.id,
-                displayName: user.user.displayName,
-                avatarUrl: null,
+      expect(response.body).toEqual({
+        success: true,
+        message: 'Conversation retrieved successfully',
+        data: {
+          conversation: expect.objectContaining({
+            id: conversationId,
+            type: 'DIRECT',
+            name: null,
+            participants: expect.arrayContaining([
+              {
+                user: {
+                  id: user.user.id,
+                  displayName: user.user.displayName,
+                  avatarUrl: null,
+                },
               },
-            },
-            {
-              user: {
-                id: targetUser.user.id,
-                displayName: targetUser.user.displayName,
-                avatarUrl: null,
+              {
+                user: {
+                  id: targetUser.user.id,
+                  displayName: targetUser.user.displayName,
+                  avatarUrl: null,
+                },
               },
-            },
-          ]),
-        }),
-      },
-    });
-  });
-
-  it('returns 404 when the conversation does not exist', async () => {
-    const user = await registerUser();
-
-    const conversationId = '01999999-9999-7999-8999-999999999999';
-
-    const response = await request(app)
-      .get(`/api/conversations/${conversationId}`)
-      .set('Authorization', `Bearer ${user.token}`);
-
-    expect(response.status).toBe(404);
-
-    expect(response.body).toEqual({
-      success: false,
-      message: 'Conversation not found',
-      errors: null,
-    });
-  });
-
-  it('returns 404 when the conversation belongs to another user', async () => {
-    const user = await registerUser();
-    const otherUser = await registerUser();
-    const targetUser = await registerUser();
-
-    const createResponse = await request(app)
-      .post('/api/conversations/direct')
-      .set('Authorization', `Bearer ${otherUser.token}`)
-      .send({
-        userId: targetUser.user.id,
+            ]),
+          }),
+        },
       });
-
-    const conversationId = createResponse.body.data.conversation.id;
-
-    const response = await request(app)
-      .get(`/api/conversations/${conversationId}`)
-      .set('Authorization', `Bearer ${user.token}`);
-
-    expect(response.status).toBe(404);
-
-    expect(response.body).toEqual({
-      success: false,
-      message: 'Conversation not found',
-      errors: null,
     });
-  });
 
-  it('returns 400 when conversationId is not a valid UUID', async () => {
-    const user = await registerUser();
+    it('returns a group conversation belonging to the authenticated user', async () => {
+      const alice = await registerUser();
+      const bob = await registerUser();
+      const charlie = await registerUser();
 
-    const response = await request(app)
-      .get('/api/conversations/invalid-uuid')
-      .set('Authorization', `Bearer ${user.token}`);
+      const createResponse = await request(app)
+        .post('/api/conversations/group')
+        .set('Authorization', `Bearer ${alice.token}`)
+        .send({
+          name: 'Backend Team',
+          participantIds: [bob.user.id, charlie.user.id],
+        });
 
-    expect(response.status).toBe(400);
+      const conversationId = createResponse.body.data.conversation.id;
 
-    expect(response.body.success).toBe(false);
-  });
+      const response = await request(app)
+        .get(`/api/conversations/${conversationId}`)
+        .set('Authorization', `Bearer ${alice.token}`);
 
-  it('rejects an unauthenticated request', async () => {
-    const response = await request(app).get(
-      '/api/conversations/01999999-9999-7999-8999-999999999999',
-    );
+      expect(response.status).toBe(200);
 
-    expect(response.status).toBe(401);
+      expect(response.body).toEqual({
+        success: true,
+        message: 'Conversation retrieved successfully',
+        data: {
+          conversation: expect.objectContaining({
+            id: conversationId,
+            type: 'GROUP',
+            name: 'Backend Team',
+            participants: expect.arrayContaining([
+              {
+                user: {
+                  id: alice.user.id,
+                  displayName: alice.user.displayName,
+                  avatarUrl: null,
+                },
+              },
+              {
+                user: {
+                  id: bob.user.id,
+                  displayName: bob.user.displayName,
+                  avatarUrl: null,
+                },
+              },
+              {
+                user: {
+                  id: charlie.user.id,
+                  displayName: charlie.user.displayName,
+                  avatarUrl: null,
+                },
+              },
+            ]),
+          }),
+        },
+      });
+    });
 
-    expect(response.body).toEqual({
-      success: false,
-      message: 'Authentication required',
-      errors: null,
+    it('returns 404 when the conversation does not exist', async () => {
+      const user = await registerUser();
+
+      const conversationId = '01999999-9999-7999-8999-999999999999';
+
+      const response = await request(app)
+        .get(`/api/conversations/${conversationId}`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(404);
+
+      expect(response.body).toEqual({
+        success: false,
+        message: 'Conversation not found',
+        errors: null,
+      });
+    });
+
+    it('returns 404 when the conversation belongs to another user', async () => {
+      const user = await registerUser();
+      const otherUser = await registerUser();
+      const targetUser = await registerUser();
+
+      const createResponse = await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${otherUser.token}`)
+        .send({
+          userId: targetUser.user.id,
+        });
+
+      const conversationId = createResponse.body.data.conversation.id;
+
+      const response = await request(app)
+        .get(`/api/conversations/${conversationId}`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(404);
+
+      expect(response.body).toEqual({
+        success: false,
+        message: 'Conversation not found',
+        errors: null,
+      });
+    });
+
+    it('returns 400 when conversationId is not a valid UUID', async () => {
+      const user = await registerUser();
+
+      const response = await request(app)
+        .get('/api/conversations/invalid-uuid')
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(400);
+
+      expect(response.body.success).toBe(false);
+    });
+
+    it('rejects an unauthenticated request', async () => {
+      const response = await request(app).get(
+        '/api/conversations/01999999-9999-7999-8999-999999999999',
+      );
+
+      expect(response.status).toBe(401);
+
+      expect(response.body).toEqual({
+        success: false,
+        message: 'Authentication required',
+        errors: null,
+      });
     });
   });
 });

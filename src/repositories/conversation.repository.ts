@@ -33,6 +33,36 @@ export async function upsertDirectConversation(
   });
 }
 
+export async function createGroupConversation(
+  name: string,
+  participantIds: string[],
+) {
+  return prisma.conversation.create({
+    data: {
+      name,
+      type: 'GROUP',
+      participants: {
+        createMany: {
+          data: participantIds.map((userId) => ({ userId })),
+        },
+      },
+    },
+    include: {
+      participants: {
+        select: {
+          user: {
+            select: {
+              id: true,
+              displayName: true,
+              avatarUrl: true,
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
 export async function findConversationsByUserId(userId: string) {
   return prisma.conversation.findMany({
     where: {
