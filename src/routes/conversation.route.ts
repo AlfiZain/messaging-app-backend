@@ -7,6 +7,7 @@ import {
   createDirectConversationSchema,
   createGroupConversationSchema,
   getDetailUserConversationParamsSchema,
+  leaveGroupConversationParamsSchema,
 } from '../schemas/conversation.schema.js';
 import * as conversationController from '../controllers/conversation.controller.js';
 import { nestedMessageRouter } from './message.route.js';
@@ -39,6 +40,13 @@ conversationRouter.post(
   validate(addConversationParticipantsParamsSchema, 'params'),
   validate(addConversationParticipantsBodySchema, 'body'),
   conversationController.addConversationParticipants,
+);
+
+conversationRouter.delete(
+  '/:conversationId/participants/me',
+  authenticate,
+  validate(leaveGroupConversationParamsSchema, 'params'),
+  conversationController.leaveGroupConversation,
 );
 
 conversationRouter.get(

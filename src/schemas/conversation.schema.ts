@@ -35,6 +35,10 @@ export const addConversationParticipantsBodySchema = z.object({
     }),
 });
 
+export const leaveGroupConversationParamsSchema = z.object({
+  conversationId: uuidSchema('Conversation ID'),
+});
+
 export const getDetailUserConversationParamsSchema = z.object({
   conversationId: uuidSchema('Conversation ID'),
 });

@@ -91,6 +91,29 @@ export async function addConversationParticipants(
   );
 }
 
+export async function leaveGroupConversation(
+  conversationId: string,
+  userId: string,
+) {
+  const conversation = await conversationRepository.findUserConversationById(
+    conversationId,
+    userId,
+  );
+
+  if (!conversation) {
+    throw new ApiError(404, 'Conversation not found');
+  }
+
+  if (conversation.type !== 'GROUP') {
+    throw new ApiError(400, 'You can only leave group conversations');
+  }
+
+  return conversationRepository.removeGroupConversationParticipant(
+    conversationId,
+    userId,
+  );
+}
+
 export async function getUserConversations(userId: string) {
   return conversationRepository.findConversationsByUserId(userId);
 }
@@ -116,7 +139,7 @@ export async function validateAndGetConversation(
   userId: string,
 ) {
   if (!conversationId) {
-    throw new Error('Converastion ID is required');
+    throw new Error('Conversation ID is required');
   }
 
   const conversation = await conversationRepository.findUserConversationById(

@@ -27,7 +27,7 @@ const registerUser = async () => {
   };
 };
 
-describe('Conversation API', () => {
+describe('Conversations API', () => {
   beforeEach(async () => {
     await prisma.message.deleteMany();
     await prisma.conversationParticipant.deleteMany();
@@ -852,6 +852,98 @@ describe('Conversation API', () => {
       expect(response.body.message).toBe(
         'One or more users are already participants',
       );
+    });
+  });
+
+  describe('DELETE /api/conversations/:conversationId/participants/me', () => {
+    it('should allow a participant to leave a group conversation', async () => {
+      const creator = await registerUser();
+      const participant = await registerUser();
+
+      const groupResponse = await request(app)
+        .post('/api/conversations/group')
+        .set('Authorization', `Bearer ${creator.token}`)
+        .send({
+          name: 'Development Team',
+          participantIds: [participant.user.id],
+        });
+
+      const conversationId = groupResponse.body.data.conversation.id;
+
+      const response = await request(app)
+        .delete(`/api/conversations/${conversationId}/participants/me`)
+        .set('Authorization', `Bearer ${participant.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.message).toBe(
+        'You left the group conversation successfully',
+      );
+      expect(response.body.data).toBeNull();
+
+      const conversationResponse = await request(app)
+        .get(`/api/conversations/${conversationId}`)
+        .set('Authorization', `Bearer ${participant.token}`);
+
+      expect(conversationResponse.status).toBe(404);
+      expect(conversationResponse.body.message).toBe('Conversation not found');
+    });
+
+    it('should reject leaving a direct conversation', async () => {
+      const creator = await registerUser();
+      const participant = await registerUser();
+
+      const directResponse = await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${creator.token}`)
+        .send({
+          userId: participant.user.id,
+        });
+
+      const conversationId = directResponse.body.data.conversation.id;
+
+      const response = await request(app)
+        .delete(`/api/conversations/${conversationId}/participants/me`)
+        .set('Authorization', `Bearer ${participant.token}`);
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toBe(
+        'You can only leave group conversations',
+      );
+    });
+
+    it('should reject when requester is not a participant', async () => {
+      const creator = await registerUser();
+      const participant = await registerUser();
+      const outsider = await registerUser();
+
+      const groupResponse = await request(app)
+        .post('/api/conversations/group')
+        .set('Authorization', `Bearer ${creator.token}`)
+        .send({
+          name: 'Private Group',
+          participantIds: [participant.user.id],
+        });
+
+      const conversationId = groupResponse.body.data.conversation.id;
+
+      const response = await request(app)
+        .delete(`/api/conversations/${conversationId}/participants/me`)
+        .set('Authorization', `Bearer ${outsider.token}`);
+
+      expect(response.status).toBe(404);
+      expect(response.body.message).toBe('Conversation not found');
+    });
+
+    it('should reject leaving a nonexistent conversation', async () => {
+      const user = await registerUser();
+
+      const response = await request(app)
+        .delete(`/api/conversations/${crypto.randomUUID()}/participants/me`)
+        .set('Authorization', `Bearer ${user.token}`);
+
+      expect(response.status).toBe(404);
+      expect(response.body.message).toBe('Conversation not found');
     });
   });
 

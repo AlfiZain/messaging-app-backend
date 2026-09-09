@@ -84,6 +84,20 @@ export async function addGroupConversationParticipants(
   });
 }
 
+export async function removeGroupConversationParticipant(
+  conversationId: string,
+  userId: string,
+) {
+  return prisma.conversationParticipant.delete({
+    where: {
+      conversationId_userId: {
+        conversationId,
+        userId,
+      },
+    },
+  });
+}
+
 export async function findConversationsByUserId(userId: string) {
   return prisma.conversation.findMany({
     where: {

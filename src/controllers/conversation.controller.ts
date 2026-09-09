@@ -41,6 +41,19 @@ export async function addConversationParticipants(req: Request, res: Response) {
   });
 }
 
+export async function leaveGroupConversation(req: Request, res: Response) {
+  await conversationService.leaveGroupConversation(
+    req.params.conversationId as string,
+    req.userId!,
+  );
+
+  return res.status(200).json({
+    success: true,
+    message: 'You left the group conversation successfully',
+    data: null,
+  });
+}
+
 export async function getConversations(req: Request, res: Response) {
   const conversations = await conversationService.getUserConversations(
     req.userId!,
