@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 
-export async function findUserByIds(ids: string[]) {
+export async function findUsersByIds(ids: string[]) {
   return prisma.user.findMany({
     where: {
       id: {

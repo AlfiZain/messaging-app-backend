@@ -1,4 +1,5 @@
 import type {
+  AddConversationParticipantInput,
   CreateDirectConversationInput,
   CreateGroupConversationInput,
 } from '../schemas/conversation.schema.js';
@@ -35,7 +36,7 @@ export async function createGroupConversation(
     ...userInput.participantIds.filter((id) => currentUserId !== id),
   ];
 
-  const users = await userRepository.findUserByIds(participantIds);
+  const users = await userRepository.findUsersByIds(participantIds);
 
   if (users.length !== participantIds.length) {
     throw new ApiError(404, 'One or more users not found');
@@ -44,6 +45,49 @@ export async function createGroupConversation(
   return conversationRepository.createGroupConversation(
     userInput.name,
     participantIds,
+  );
+}
+
+export async function addConversationParticipants(
+  conversationId: string,
+  userId: string,
+  userInput: AddConversationParticipantInput,
+) {
+  const conversation = await conversationRepository.findUserConversationById(
+    conversationId,
+    userId,
+  );
+
+  if (!conversation) {
+    throw new ApiError(404, 'Conversation not found');
+  }
+
+  if (conversation.type !== 'GROUP') {
+    throw new ApiError(
+      400,
+      'Participants can only be added to group conversations',
+    );
+  }
+
+  const users = await userRepository.findUsersByIds(userInput.userIds);
+
+  if (users.length !== userInput.userIds.length) {
+    throw new ApiError(404, 'One or more users not found');
+  }
+
+  const existingParticipants =
+    await conversationRepository.findConversationParticipantsByUserIds(
+      conversationId,
+      userInput.userIds,
+    );
+
+  if (existingParticipants.length > 0) {
+    throw new ApiError(409, 'One or more users are already participants');
+  }
+
+  return conversationRepository.addGroupConversationParticipants(
+    conversationId,
+    userInput.userIds,
   );
 }
 

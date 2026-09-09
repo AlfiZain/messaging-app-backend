@@ -631,6 +631,230 @@ describe('Conversation API', () => {
     });
   });
 
+  describe('POST /api/conversations/:conversationId/participants', () => {
+    it('should add multiple participants to a group conversation', async () => {
+      const creator = await registerUser();
+      const participantOne = await registerUser();
+      const participantTwo = await registerUser();
+      const participantThree = await registerUser();
+
+      const groupResponse = await request(app)
+        .post('/api/conversations/group')
+        .set('Authorization', `Bearer ${creator.token}`)
+        .send({
+          name: 'Development Team',
+          participantIds: [participantOne.user.id],
+        });
+
+      const conversationId = groupResponse.body.data.conversation.id;
+
+      const response = await request(app)
+        .post(`/api/conversations/${conversationId}/participants`)
+        .set('Authorization', `Bearer ${creator.token}`)
+        .send({
+          userIds: [participantTwo.user.id, participantThree.user.id],
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.message).toBe('Participants added successfully');
+
+      const participants = response.body.data.participants;
+
+      expect(participants).toHaveLength(2);
+      expect(
+        participants.some(
+          (participant: { user: { id: string } }) =>
+            participant.user.id === participantTwo.user.id,
+        ),
+      ).toBe(true);
+      expect(
+        participants.some(
+          (participant: { user: { id: string } }) =>
+            participant.user.id === participantThree.user.id,
+        ),
+      ).toBe(true);
+    });
+
+    it('should reject adding participants to a direct conversation', async () => {
+      const creator = await registerUser();
+      const participant = await registerUser();
+      const newParticipant = await registerUser();
+
+      const directResponse = await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${creator.token}`)
+        .send({
+          userId: participant.user.id,
+        });
+
+      const conversationId = directResponse.body.data.conversation.id;
+
+      const response = await request(app)
+        .post(`/api/conversations/${conversationId}/participants`)
+        .set('Authorization', `Bearer ${creator.token}`)
+        .send({
+          userIds: [newParticipant.user.id],
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toBe(
+        'Participants can only be added to group conversations',
+      );
+    });
+
+    it('should reject when requester is not a participant', async () => {
+      const creator = await registerUser();
+      const participant = await registerUser();
+      const outsider = await registerUser();
+      const newParticipant = await registerUser();
+
+      const groupResponse = await request(app)
+        .post('/api/conversations/group')
+        .set('Authorization', `Bearer ${creator.token}`)
+        .send({
+          name: 'Private Group',
+          participantIds: [participant.user.id],
+        });
+
+      const conversationId = groupResponse.body.data.conversation.id;
+
+      const response = await request(app)
+        .post(`/api/conversations/${conversationId}/participants`)
+        .set('Authorization', `Bearer ${outsider.token}`)
+        .send({
+          userIds: [newParticipant.user.id],
+        });
+
+      expect(response.status).toBe(404);
+      expect(response.body.message).toBe('Conversation not found');
+    });
+
+    it('should reject when one or more users do not exist', async () => {
+      const creator = await registerUser();
+      const participant = await registerUser();
+
+      const groupResponse = await request(app)
+        .post('/api/conversations/group')
+        .set('Authorization', `Bearer ${creator.token}`)
+        .send({
+          name: 'Development Team',
+          participantIds: [participant.user.id],
+        });
+
+      const conversationId = groupResponse.body.data.conversation.id;
+
+      const response = await request(app)
+        .post(`/api/conversations/${conversationId}/participants`)
+        .set('Authorization', `Bearer ${creator.token}`)
+        .send({
+          userIds: [crypto.randomUUID(), crypto.randomUUID()],
+        });
+
+      expect(response.status).toBe(404);
+      expect(response.body.message).toBe('One or more users not found');
+    });
+
+    it('should reject duplicate user IDs', async () => {
+      const creator = await registerUser();
+      const participant = await registerUser();
+
+      const groupResponse = await request(app)
+        .post('/api/conversations/group')
+        .set('Authorization', `Bearer ${creator.token}`)
+        .send({
+          name: 'Development Team',
+          participantIds: [participant.user.id],
+        });
+
+      const conversationId = groupResponse.body.data.conversation.id;
+
+      const response = await request(app)
+        .post(`/api/conversations/${conversationId}/participants`)
+        .set('Authorization', `Bearer ${creator.token}`)
+        .send({
+          userIds: [participant.user.id, participant.user.id],
+        });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('should reject an empty userIds array', async () => {
+      const creator = await registerUser();
+      const participant = await registerUser();
+
+      const groupResponse = await request(app)
+        .post('/api/conversations/group')
+        .set('Authorization', `Bearer ${creator.token}`)
+        .send({
+          name: 'Development Team',
+          participantIds: [participant.user.id],
+        });
+
+      const conversationId = groupResponse.body.data.conversation.id;
+
+      const response = await request(app)
+        .post(`/api/conversations/${conversationId}/participants`)
+        .set('Authorization', `Bearer ${creator.token}`)
+        .send({
+          userIds: [],
+        });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('should reject an invalid user ID', async () => {
+      const creator = await registerUser();
+      const participant = await registerUser();
+
+      const groupResponse = await request(app)
+        .post('/api/conversations/group')
+        .set('Authorization', `Bearer ${creator.token}`)
+        .send({
+          name: 'Development Team',
+          participantIds: [participant.user.id],
+        });
+
+      const conversationId = groupResponse.body.data.conversation.id;
+
+      const response = await request(app)
+        .post(`/api/conversations/${conversationId}/participants`)
+        .set('Authorization', `Bearer ${creator.token}`)
+        .send({
+          userIds: ['invalid-uuid'],
+        });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('should reject users who are already participants', async () => {
+      const creator = await registerUser();
+      const participant = await registerUser();
+
+      const groupResponse = await request(app)
+        .post('/api/conversations/group')
+        .set('Authorization', `Bearer ${creator.token}`)
+        .send({
+          name: 'Development Team',
+          participantIds: [participant.user.id],
+        });
+
+      const conversationId = groupResponse.body.data.conversation.id;
+
+      const response = await request(app)
+        .post(`/api/conversations/${conversationId}/participants`)
+        .set('Authorization', `Bearer ${creator.token}`)
+        .send({
+          userIds: [participant.user.id],
+        });
+
+      expect(response.status).toBe(409);
+      expect(response.body.message).toBe(
+        'One or more users are already participants',
+      );
+    });
+  });
+
   describe('GET /api/conversations/:conversationId', () => {
     it('returns a direct conversation belonging to the authenticated user', async () => {
       const user = await registerUser();

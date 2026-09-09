@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { authenticate } from '../middlewares/auth.middleware.js';
 import { validate } from '../middlewares/validate.middleware.js';
 import {
+  addConversationParticipantsBodySchema,
+  addConversationParticipantsParamsSchema,
   createDirectConversationSchema,
   createGroupConversationSchema,
   getDetailUserConversationParamsSchema,
@@ -29,6 +31,14 @@ conversationRouter.get(
   '/',
   authenticate,
   conversationController.getConversations,
+);
+
+conversationRouter.post(
+  '/:conversationId/participants',
+  authenticate,
+  validate(addConversationParticipantsParamsSchema, 'params'),
+  validate(addConversationParticipantsBodySchema, 'body'),
+  conversationController.addConversationParticipants,
 );
 
 conversationRouter.get(

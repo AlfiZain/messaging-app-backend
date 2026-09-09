@@ -63,6 +63,27 @@ export async function createGroupConversation(
   });
 }
 
+export async function addGroupConversationParticipants(
+  conversationId: string,
+  userIds: string[],
+) {
+  return prisma.conversationParticipant.createManyAndReturn({
+    data: userIds.map((userId) => ({
+      conversationId,
+      userId,
+    })),
+    select: {
+      user: {
+        select: {
+          id: true,
+          displayName: true,
+          avatarUrl: true,
+        },
+      },
+    },
+  });
+}
+
 export async function findConversationsByUserId(userId: string) {
   return prisma.conversation.findMany({
     where: {
@@ -116,6 +137,23 @@ export async function findUserConversationById(
           },
         },
       },
+    },
+  });
+}
+
+export async function findConversationParticipantsByUserIds(
+  conversationId: string,
+  userIds: string[],
+) {
+  return prisma.conversationParticipant.findMany({
+    where: {
+      conversationId,
+      userId: {
+        in: userIds,
+      },
+    },
+    select: {
+      userId: true,
     },
   });
 }

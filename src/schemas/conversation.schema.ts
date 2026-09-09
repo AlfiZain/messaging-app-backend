@@ -1,7 +1,10 @@
 import z from 'zod';
 
+export const uuidSchema = (fieldName = 'ID') =>
+  z.uuid({ message: `${fieldName} must be a valid UUID` });
+
 export const createDirectConversationSchema = z.object({
-  userId: z.uuid({ message: 'Invalid user ID format (must be a valid UUID)' }),
+  userId: uuidSchema('User ID'),
 });
 
 export const createGroupConversationSchema = z.object({
@@ -19,14 +22,25 @@ export const createGroupConversationSchema = z.object({
     }),
 });
 
+export const addConversationParticipantsParamsSchema = z.object({
+  conversationId: uuidSchema('Conversation ID'),
+});
+
+export const addConversationParticipantsBodySchema = z.object({
+  userIds: z
+    .array(z.uuid({ message: 'User ID must be a valid UUID' }))
+    .min(1, { message: 'At least one user is required' })
+    .refine((ids) => new Set(ids).size === ids.length, {
+      message: 'User IDs must be unique',
+    }),
+});
+
 export const getDetailUserConversationParamsSchema = z.object({
-  conversationId: z.uuid({ message: 'Conversation Id must be a valid UUID' }),
+  conversationId: uuidSchema('Conversation ID'),
 });
 
 export const joinConversationSchema = z.object({
-  conversationId: z.uuid({
-    message: 'Conversation ID must be a valid UUID',
-  }),
+  conversationId: uuidSchema('Conversation ID'),
 });
 
 export type CreateDirectConversationInput = z.infer<
@@ -35,4 +49,8 @@ export type CreateDirectConversationInput = z.infer<
 
 export type CreateGroupConversationInput = z.infer<
   typeof createGroupConversationSchema
+>;
+
+export type AddConversationParticipantInput = z.infer<
+  typeof addConversationParticipantsBodySchema
 >;
