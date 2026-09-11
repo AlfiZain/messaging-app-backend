@@ -1,10 +1,9 @@
 import { createServer } from 'node:http';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { io as createClient } from 'socket.io-client';
+import { io as createClient, type Socket } from 'socket.io-client';
 import request from 'supertest';
 
 import app from '../../src/app.js';
-import { generateAccessToken } from '../../src/lib/jwt.js';
 import { prisma } from '../../src/lib/prisma.js';
 import { initSocketServer } from '../../src/lib/socket/index.js';
 
@@ -22,7 +21,10 @@ const createUniqueUserData = () => {
 const registerUser = async () => {
   const userData = createUniqueUserData();
 
-  const response = await request(app).post('/api/auth/register').send(userData);
+  const response = await request(app)
+    .post('/api/auth/register')
+    .send(userData)
+    .expect(201);
 
   return {
     token: response.body.data.token,
@@ -30,19 +32,88 @@ const registerUser = async () => {
   };
 };
 
-describe('Socket.IO authentication', () => {
+const createSocket = (port: number, token: string) => {
+  return createClient(`http://localhost:${port}`, {
+    auth: {
+      token,
+    },
+  });
+};
+
+const waitForSocketEvent = <T>(socket: Socket, event: string): Promise<T> => {
+  return new Promise((resolve, reject) => {
+    const handleEvent = (data: T) => {
+      socket.off(event, handleEvent);
+      socket.off('connect_error', handleError);
+      resolve(data);
+    };
+
+    const handleError = (error: Error) => {
+      socket.off(event, handleEvent);
+      socket.off('connect_error', handleError);
+      reject(error);
+    };
+
+    socket.once(event, handleEvent);
+    socket.once('connect_error', handleError);
+  });
+};
+
+const connectSocket = async (socket: Socket) => {
+  if (socket.connected) {
+    return;
+  }
+
+  await waitForSocketEvent<void>(socket, 'connect');
+};
+
+const disconnectSockets = (...sockets: Socket[]) => {
+  for (const socket of sockets) {
+    socket.disconnect();
+  }
+};
+
+const createDirectConversation = async (token: string, userId: string) => {
+  const response = await request(app)
+    .post('/api/conversations/direct')
+    .set('Authorization', `Bearer ${token}`)
+    .send({ userId })
+    .expect(201);
+
+  return response.body.data.conversation;
+};
+
+const createGroupConversation = async (
+  token: string,
+  participantIds: string[],
+) => {
+  const response = await request(app)
+    .post('/api/conversations/group')
+    .set('Authorization', `Bearer ${token}`)
+    .send({
+      name: 'Test Group',
+      participantIds,
+    })
+    .expect(201);
+
+  return response.body.data.conversation;
+};
+
+const joinConversation = async (socket: Socket, conversationId: string) => {
+  socket.emit('join_conversation', {
+    conversationId,
+  });
+
+  await waitForSocketEvent(socket, 'conversation_joined');
+};
+
+describe('Socket.IO', () => {
   let httpServer: ReturnType<typeof createServer>;
   let port: number;
 
-  beforeEach(async () => {
-    await prisma.message.deleteMany();
-    await prisma.conversationParticipant.deleteMany();
-    await prisma.conversation.deleteMany();
-    await prisma.user.deleteMany();
-  });
-
   beforeAll(async () => {
     httpServer = createServer(app);
+
     initSocketServer(httpServer);
 
     await new Promise<void>((resolve) => {
@@ -56,6 +127,13 @@ describe('Socket.IO authentication', () => {
         resolve();
       });
     });
+  });
+
+  beforeEach(async () => {
+    await prisma.message.deleteMany();
+    await prisma.conversationParticipant.deleteMany();
+    await prisma.conversation.deleteMany();
+    await prisma.user.deleteMany();
   });
 
   afterAll(async () => {
@@ -77,451 +155,629 @@ describe('Socket.IO authentication', () => {
     await prisma.$disconnect();
   });
 
-  it('accepts a connection with valid access token', async () => {
-    const token = generateAccessToken('test-user-id');
+  describe('authentication', () => {
+    it('accepts a connection with valid access token', async () => {
+      const user = await registerUser();
+      const socket = createSocket(port, user.token);
 
-    const socket = createClient(`http://localhost:${port}`, {
-      auth: {
-        token,
-      },
+      await connectSocket(socket);
+
+      expect(socket.connected).toBe(true);
+
+      socket.disconnect();
     });
 
-    await new Promise<void>((resolve, reject) => {
-      socket.on('connect', () => {
-        expect(socket.connected).toBe(true);
-        socket.disconnect();
-        resolve();
-      });
+    it('rejects a connection without access token', async () => {
+      const socket = createSocket(port, '');
 
-      socket.on('connect_error', reject);
-    });
-  });
+      const error = await waitForSocketEvent<Error>(socket, 'connect_error');
 
-  it('rejects a connection without access token', async () => {
-    const socket = createClient(`http://localhost:${port}`);
+      expect(error.message).toBe('Authentication required');
 
-    await new Promise<void>((resolve) => {
-      socket.on('connect_error', (error) => {
-        expect(error.message).toBe('Authentication required');
-        socket.disconnect();
-        resolve();
-      });
-    });
-  });
-
-  it('rejects a connection with an invalid access token', async () => {
-    const socket = createClient(`http://localhost:${port}`, {
-      auth: {
-        token: 'invalid-token',
-      },
+      socket.disconnect();
     });
 
-    await new Promise<void>((resolve) => {
-      socket.on('connect_error', (error) => {
-        expect(error.message).toBe('Invalid token');
-        socket.disconnect();
-        resolve();
-      });
+    it('rejects a connection with an invalid access token', async () => {
+      const socket = createSocket(port, 'invalid-token');
+
+      const error = await waitForSocketEvent<Error>(socket, 'connect_error');
+
+      expect(error.message).toBe('Invalid token');
+
+      socket.disconnect();
     });
   });
 
-  it('allows a conversation participant to join the conversation room', async () => {
-    const user = await registerUser();
-    const targetUser = await registerUser();
+  describe('conversation rooms', () => {
+    it('allows a conversation participant to join the conversation room', async () => {
+      const userA = await registerUser();
+      const userB = await registerUser();
 
-    const conversationResponse = await request(app)
-      .post('/api/conversations/direct')
-      .set('Authorization', `Bearer ${user.token}`)
-      .send({
-        userId: targetUser.user.id,
-      });
+      const conversation = await createDirectConversation(
+        userA.token,
+        userB.user.id,
+      );
 
-    const conversationId = conversationResponse.body.data.conversation.id;
+      const socket = createSocket(port, userA.token);
 
-    const socket = createClient(`http://localhost:${port}`, {
-      auth: {
-        token: user.token,
-      },
+      await connectSocket(socket);
+      await joinConversation(socket, conversation.id);
+
+      socket.disconnect();
     });
 
-    await new Promise<void>((resolve, reject) => {
-      socket.on('connect', () => {
-        socket.emit('join_conversation', {
-          conversationId,
-        });
+    it('rejects a non-participant from joining a conversation room', async () => {
+      const userA = await registerUser();
+      const userB = await registerUser();
+      const userC = await registerUser();
+
+      const conversation = await createDirectConversation(
+        userA.token,
+        userB.user.id,
+      );
+
+      const socket = createSocket(port, userC.token);
+
+      await connectSocket(socket);
+
+      socket.emit('join_conversation', {
+        conversationId: conversation.id,
       });
 
-      socket.on('conversation_joined', (data) => {
-        expect(data).toEqual({
-          conversationId,
-        });
+      const error = await waitForSocketEvent<{
+        message: string;
+      }>(socket, 'conversation_error');
 
-        socket.disconnect();
-        resolve();
+      expect(error).toEqual({
+        message: 'Conversation not found',
       });
 
-      socket.on('connect_error', reject);
-
-      socket.on('conversation_error', (error) => {
-        reject(new Error(error.message));
-      });
-    });
-  });
-
-  it('rejects a non-participant from joining a conversation room', async () => {
-    const user = await registerUser();
-    const targetUser = await registerUser();
-    const otherUser = await registerUser();
-
-    const conversationResponse = await request(app)
-      .post('/api/conversations/direct')
-      .set('Authorization', `Bearer ${user.token}`)
-      .send({
-        userId: targetUser.user.id,
-      });
-
-    const conversationId = conversationResponse.body.data.conversation.id;
-
-    const socket = createClient(`http://localhost:${port}`, {
-      auth: {
-        token: otherUser.token,
-      },
+      socket.disconnect();
     });
 
-    await new Promise<void>((resolve, reject) => {
-      socket.on('connect', () => {
-        socket.emit('join_conversation', {
-          conversationId,
-        });
+    it('rejects joining a conversation that does not exist', async () => {
+      const user = await registerUser();
+
+      const socket = createSocket(port, user.token);
+
+      await connectSocket(socket);
+
+      socket.emit('join_conversation', {
+        conversationId: '01999999-9999-7999-8999-999999999999',
       });
 
-      socket.on('conversation_error', (error) => {
-        expect(error).toEqual({
-          message: 'Conversation not found',
-        });
+      const error = await waitForSocketEvent<{
+        message: string;
+      }>(socket, 'conversation_error');
 
-        socket.disconnect();
-        resolve();
+      expect(error).toEqual({
+        message: 'Conversation not found',
       });
 
-      socket.on('connect_error', reject);
-    });
-  });
-
-  it('rejects joining a conversation that does not exist', async () => {
-    const user = await registerUser();
-
-    const conversationId = '01999999-9999-7999-8999-999999999999';
-
-    const socket = createClient(`http://localhost:${port}`, {
-      auth: {
-        token: user.token,
-      },
+      socket.disconnect();
     });
 
-    await new Promise<void>((resolve, reject) => {
-      socket.on('connect', () => {
-        socket.emit('join_conversation', {
-          conversationId,
-        });
+    it('rejects an invalid conversation ID', async () => {
+      const user = await registerUser();
+
+      const socket = createSocket(port, user.token);
+
+      await connectSocket(socket);
+
+      socket.emit('join_conversation', {
+        conversationId: 'invalid-uuid',
       });
 
-      socket.on('conversation_error', (error) => {
-        expect(error).toEqual({
-          message: 'Conversation not found',
-        });
+      const error = await waitForSocketEvent<{
+        message: string;
+        errors: Array<{
+          field: string;
+          message: string;
+        }>;
+      }>(socket, 'conversation_error');
 
-        socket.disconnect();
-        resolve();
+      expect(error).toEqual({
+        message: 'Validation failed',
+        errors: [
+          {
+            field: 'conversationId',
+            message: 'Conversation ID must be a valid UUID',
+          },
+        ],
       });
 
-      socket.on('connect_error', reject);
+      socket.disconnect();
     });
   });
 
-  it('rejects an invalid conversation ID', async () => {
-    const user = await registerUser();
+  describe('messages', () => {
+    it('allows a participant to send a message', async () => {
+      const userA = await registerUser();
+      const userB = await registerUser();
 
-    const socket = createClient(`http://localhost:${port}`, {
-      auth: {
-        token: user.token,
-      },
-    });
+      const conversation = await createDirectConversation(
+        userA.token,
+        userB.user.id,
+      );
 
-    await new Promise<void>((resolve, reject) => {
-      socket.on('connect', () => {
-        socket.emit('join_conversation', {
-          conversationId: 'invalid-uuid',
-        });
+      const socket = createSocket(port, userA.token);
+
+      await connectSocket(socket);
+      await joinConversation(socket, conversation.id);
+
+      const messagePromise = waitForSocketEvent<{
+        message: {
+          content: string;
+          conversationId: string;
+          sender: {
+            id: string;
+          };
+        };
+      }>(socket, 'new_message');
+
+      socket.emit('send_message', {
+        conversationId: conversation.id,
+        content: 'Hello from Socket.IO',
       });
 
-      socket.on('conversation_error', (error) => {
-        expect(error).toEqual({
-          message: 'Validation failed',
-          errors: [
-            {
-              field: 'conversationId',
-              message: 'Conversation ID must be a valid UUID',
-            },
-          ],
-        });
+      const data = await messagePromise;
 
-        socket.disconnect();
-        resolve();
-      });
+      expect(data.message.content).toBe('Hello from Socket.IO');
+      expect(data.message.conversationId).toBe(conversation.id);
+      expect(data.message.sender.id).toBe(userA.user.id);
 
-      socket.on('connect_error', reject);
-    });
-  });
-
-  it('allows a participant to send a message', async () => {
-    const userA = await registerUser();
-    const userB = await registerUser();
-
-    const conversationResponse = await request(app)
-      .post('/api/conversations/direct')
-      .set('Authorization', `Bearer ${userA.token}`)
-      .send({ userId: userB.user.id })
-      .expect(201);
-
-    const conversationId = conversationResponse.body.data.conversation.id;
-
-    const socket = createClient(`http://localhost:${port}`, {
-      auth: {
-        token: userA.token,
-      },
-    });
-
-    await new Promise<void>((resolve, reject) => {
-      socket.on('connect', () => {
-        socket.emit('join_conversation', {
-          conversationId,
-        });
-      });
-
-      socket.on('conversation_joined', () => {
-        socket.emit('send_message', {
-          conversationId,
+      const message = await prisma.message.findFirst({
+        where: {
+          conversationId: conversation.id,
           content: 'Hello from Socket.IO',
-        });
+        },
       });
 
-      socket.on('new_message', async (data) => {
-        try {
-          expect(data.message.content).toBe('Hello from Socket.IO');
-          expect(data.message.sender.id).toBe(userA.user.id);
-          expect(data.message.conversationId).toBe(conversationId);
+      expect(message).not.toBeNull();
+      expect(message?.senderId).toBe(userA.user.id);
 
-          const message = await prisma.message.findFirst({
-            where: {
-              conversationId,
-              content: 'Hello from Socket.IO',
-            },
-          });
-
-          expect(message).not.toBeNull();
-          expect(message?.senderId).toBe(userA.user.id);
-
-          socket.disconnect();
-          resolve();
-        } catch (error) {
-          socket.disconnect();
-          reject(error);
-        }
-      });
-
-      socket.on('message_error', (error) => {
-        socket.disconnect();
-        reject(new Error(error.message));
-      });
-
-      socket.on('connect_error', reject);
-    });
-  });
-
-  it('delivers a message to another participant in the conversation', async () => {
-    const userA = await registerUser();
-    const userB = await registerUser();
-
-    const conversationResponse = await request(app)
-      .post('/api/conversations/direct')
-      .set('Authorization', `Bearer ${userA.token}`)
-      .send({ userId: userB.user.id })
-      .expect(201);
-
-    const conversationId = conversationResponse.body.data.conversation.id;
-
-    const socketA = createClient(`http://localhost:${port}`, {
-      auth: {
-        token: userA.token,
-      },
+      socket.disconnect();
     });
 
-    const socketB = createClient(`http://localhost:${port}`, {
-      auth: {
-        token: userB.token,
-      },
+    it('delivers a message to another participant in the conversation', async () => {
+      const userA = await registerUser();
+      const userB = await registerUser();
+
+      const conversation = await createDirectConversation(
+        userA.token,
+        userB.user.id,
+      );
+
+      const socketA = createSocket(port, userA.token);
+      const socketB = createSocket(port, userB.token);
+
+      await Promise.all([connectSocket(socketA), connectSocket(socketB)]);
+
+      await Promise.all([
+        joinConversation(socketA, conversation.id),
+        joinConversation(socketB, conversation.id),
+      ]);
+
+      const messagePromise = waitForSocketEvent<{
+        message: {
+          content: string;
+          conversationId: string;
+          sender: {
+            id: string;
+          };
+        };
+      }>(socketB, 'new_message');
+
+      socketA.emit('send_message', {
+        conversationId: conversation.id,
+        content: 'Hello User B',
+      });
+
+      const data = await messagePromise;
+
+      expect(data.message.content).toBe('Hello User B');
+      expect(data.message.sender.id).toBe(userA.user.id);
+      expect(data.message.conversationId).toBe(conversation.id);
+
+      disconnectSockets(socketA, socketB);
     });
 
-    await new Promise<void>((resolve, reject) => {
-      let joinedCount = 0;
+    it('delivers a new message event when a message is created through REST', async () => {
+      const userA = await registerUser();
+      const userB = await registerUser();
 
-      const cleanup = () => {
-        socketA.disconnect();
-        socketB.disconnect();
-      };
+      const conversation = await createDirectConversation(
+        userA.token,
+        userB.user.id,
+      );
 
-      socketA.on('connect_error', reject);
-      socketB.on('connect_error', reject);
+      const socketB = createSocket(port, userB.token);
 
-      socketA.on('connect', () => {
-        socketA.emit('join_conversation', {
-          conversationId,
-        });
-      });
+      await connectSocket(socketB);
+      await joinConversation(socketB, conversation.id);
 
-      socketB.on('connect', () => {
-        socketB.emit('join_conversation', {
-          conversationId,
-        });
-      });
+      const messagePromise = waitForSocketEvent<{
+        message: {
+          content: string;
+          conversationId: string;
+          sender: {
+            id: string;
+          };
+        };
+      }>(socketB, 'new_message');
 
-      const handleJoined = () => {
-        joinedCount += 1;
+      await request(app)
+        .post(`/api/conversations/${conversation.id}/messages`)
+        .set('Authorization', `Bearer ${userA.token}`)
+        .send({
+          content: 'Hello from REST',
+        })
+        .expect(201);
 
-        if (joinedCount === 2) {
-          socketA.emit('send_message', {
-            conversationId,
-            content: 'Hello User B',
-          });
-        }
-      };
+      const data = await messagePromise;
 
-      socketA.on('conversation_joined', handleJoined);
-      socketB.on('conversation_joined', handleJoined);
+      expect(data.message.content).toBe('Hello from REST');
+      expect(data.message.conversationId).toBe(conversation.id);
+      expect(data.message.sender.id).toBe(userA.user.id);
 
-      socketB.on('new_message', (data) => {
-        try {
-          expect(data.message.content).toBe('Hello User B');
-          expect(data.message.sender.id).toBe(userA.user.id);
-          expect(data.message.conversationId).toBe(conversationId);
-
-          cleanup();
-          resolve();
-        } catch (error) {
-          cleanup();
-          reject(error);
-        }
-      });
-
-      socketA.on('message_error', (error) => {
-        cleanup();
-        reject(new Error(error.message));
-      });
-
-      socketB.on('message_error', (error) => {
-        cleanup();
-        reject(new Error(error.message));
-      });
-    });
-  });
-
-  it('rejects a message from a non-participant', async () => {
-    const userA = await registerUser();
-    const userB = await registerUser();
-    const userC = await registerUser();
-
-    const conversationResponse = await request(app)
-      .post('/api/conversations/direct')
-      .set('Authorization', `Bearer ${userA.token}`)
-      .send({ userId: userB.user.id })
-      .expect(201);
-
-    const conversationId = conversationResponse.body.data.conversation.id;
-
-    const socket = createClient(`http://localhost:${port}`, {
-      auth: {
-        token: userC.token,
-      },
+      socketB.disconnect();
     });
 
-    await new Promise<void>((resolve, reject) => {
-      socket.on('connect', () => {
-        socket.emit('send_message', {
-          conversationId,
+    it('rejects a message from a non-participant', async () => {
+      const userA = await registerUser();
+      const userB = await registerUser();
+      const userC = await registerUser();
+
+      const conversation = await createDirectConversation(
+        userA.token,
+        userB.user.id,
+      );
+
+      const socket = createSocket(port, userC.token);
+
+      await connectSocket(socket);
+
+      const errorPromise = waitForSocketEvent<{
+        message: string;
+      }>(socket, 'message_error');
+
+      socket.emit('send_message', {
+        conversationId: conversation.id,
+        content: 'Unauthorized message',
+      });
+
+      const error = await errorPromise;
+
+      expect(error).toEqual({
+        message: 'Conversation not found',
+      });
+
+      const message = await prisma.message.findFirst({
+        where: {
+          conversationId: conversation.id,
           content: 'Unauthorized message',
-        });
+        },
       });
 
-      socket.on('message_error', async (error) => {
-        try {
-          expect(error).toEqual({
-            message: 'Conversation not found',
-          });
+      expect(message).toBeNull();
 
-          const message = await prisma.message.findFirst({
-            where: {
-              conversationId,
-              content: 'Unauthorized message',
-            },
-          });
+      socket.disconnect();
+    });
 
-          expect(message).toBeNull();
+    it('rejects an invalid send_message payload', async () => {
+      const user = await registerUser();
 
-          socket.disconnect();
-          resolve();
-        } catch (err) {
-          socket.disconnect();
-          reject(err);
-        }
+      const socket = createSocket(port, user.token);
+
+      await connectSocket(socket);
+
+      const errorPromise = waitForSocketEvent<{
+        message: string;
+        errors: Array<{
+          field: string;
+          message: string;
+        }>;
+      }>(socket, 'message_error');
+
+      socket.emit('send_message', {
+        conversationId: 'invalid-uuid',
+        content: '',
       });
 
-      socket.on('connect_error', reject);
+      const error = await errorPromise;
+
+      expect(error).toEqual({
+        message: 'Validation failed',
+        errors: expect.arrayContaining([
+          {
+            field: 'conversationId',
+            message: 'Conversation ID must be a valid UUID',
+          },
+          {
+            field: 'content',
+            message: 'Message content is required',
+          },
+        ]),
+      });
+
+      socket.disconnect();
     });
   });
 
-  it('rejects an invalid send_message payload', async () => {
-    const user = await registerUser();
+  describe('group events', () => {
+    it('notifies conversation participants when a participant is added', async () => {
+      const userA = await registerUser();
+      const userB = await registerUser();
+      const userC = await registerUser();
 
-    const socket = createClient(`http://localhost:${port}`, {
-      auth: {
-        token: user.token,
-      },
+      const conversation = await createGroupConversation(userA.token, [
+        userB.user.id,
+      ]);
+
+      const socketA = createSocket(port, userA.token);
+      const socketB = createSocket(port, userB.token);
+      const socketC = createSocket(port, userC.token);
+
+      await Promise.all([
+        connectSocket(socketA),
+        connectSocket(socketB),
+        connectSocket(socketC),
+      ]);
+
+      await Promise.all([
+        joinConversation(socketA, conversation.id),
+        joinConversation(socketB, conversation.id),
+      ]);
+
+      const participantAddedPromiseA = waitForSocketEvent<{
+        conversationId: string;
+        participants: Array<{
+          user: {
+            id: string;
+          };
+        }>;
+      }>(socketA, 'participant_added');
+
+      const participantAddedPromiseB = waitForSocketEvent<{
+        conversationId: string;
+        participants: Array<{
+          user: {
+            id: string;
+          };
+        }>;
+      }>(socketB, 'participant_added');
+
+      const conversationAddedPromise = waitForSocketEvent<{
+        conversation: {
+          id: string;
+          type: string;
+          name: string;
+        };
+      }>(socketC, 'conversation_added');
+
+      await request(app)
+        .post(`/api/conversations/${conversation.id}/participants`)
+        .set('Authorization', `Bearer ${userA.token}`)
+        .send({
+          userIds: [userC.user.id],
+        })
+        .expect(200);
+
+      const [eventA, eventB, eventC] = await Promise.all([
+        participantAddedPromiseA,
+        participantAddedPromiseB,
+        conversationAddedPromise,
+      ]);
+
+      expect(eventA).toEqual({
+        conversationId: conversation.id,
+        participants: [
+          expect.objectContaining({
+            user: expect.objectContaining({
+              id: userC.user.id,
+            }),
+          }),
+        ],
+      });
+
+      expect(eventB).toEqual({
+        conversationId: conversation.id,
+        participants: [
+          expect.objectContaining({
+            user: expect.objectContaining({
+              id: userC.user.id,
+            }),
+          }),
+        ],
+      });
+
+      expect(eventC.conversation).toEqual(
+        expect.objectContaining({
+          id: conversation.id,
+          type: 'GROUP',
+          name: 'Test Group',
+        }),
+      );
+
+      disconnectSockets(socketA, socketB, socketC);
     });
 
-    await new Promise<void>((resolve, reject) => {
-      socket.on('connect', () => {
-        socket.emit('send_message', {
-          conversationId: 'invalid-uuid',
-          content: '',
-        });
+    it('notifies all sockets of the added user about the new conversation', async () => {
+      const userA = await registerUser();
+      const userB = await registerUser();
+      const userC = await registerUser();
+
+      const conversation = await createGroupConversation(userA.token, [
+        userB.user.id,
+      ]);
+
+      const socketC1 = createSocket(port, userC.token);
+      const socketC2 = createSocket(port, userC.token);
+
+      await Promise.all([connectSocket(socketC1), connectSocket(socketC2)]);
+
+      const conversationAddedPromise1 = waitForSocketEvent<{
+        conversation: {
+          id: string;
+        };
+      }>(socketC1, 'conversation_added');
+
+      const conversationAddedPromise2 = waitForSocketEvent<{
+        conversation: {
+          id: string;
+        };
+      }>(socketC2, 'conversation_added');
+
+      await request(app)
+        .post(`/api/conversations/${conversation.id}/participants`)
+        .set('Authorization', `Bearer ${userA.token}`)
+        .send({
+          userIds: [userC.user.id],
+        })
+        .expect(200);
+
+      const [event1, event2] = await Promise.all([
+        conversationAddedPromise1,
+        conversationAddedPromise2,
+      ]);
+
+      expect(event1.conversation.id).toBe(conversation.id);
+      expect(event2.conversation.id).toBe(conversation.id);
+
+      disconnectSockets(socketC1, socketC2);
+    });
+
+    it('notifies conversation participants when a participant leaves', async () => {
+      const userA = await registerUser();
+      const userB = await registerUser();
+
+      const conversation = await createGroupConversation(userA.token, [
+        userB.user.id,
+      ]);
+
+      const socketA = createSocket(port, userA.token);
+      const socketB = createSocket(port, userB.token);
+
+      await Promise.all([connectSocket(socketA), connectSocket(socketB)]);
+
+      await Promise.all([
+        joinConversation(socketA, conversation.id),
+        joinConversation(socketB, conversation.id),
+      ]);
+
+      const participantLeftPromise = waitForSocketEvent<{
+        conversationId: string;
+        userId: string;
+      }>(socketA, 'participant_left');
+
+      await request(app)
+        .delete(`/api/conversations/${conversation.id}/participants/me`)
+        .set('Authorization', `Bearer ${userB.token}`)
+        .expect(200);
+
+      const event = await participantLeftPromise;
+
+      expect(event).toEqual({
+        conversationId: conversation.id,
+        userId: userB.user.id,
       });
 
-      socket.on('message_error', (error) => {
-        try {
-          expect(error).toEqual({
-            message: 'Validation failed',
-            errors: expect.arrayContaining([
-              {
-                field: 'conversationId',
-                message: 'Conversation ID must be a valid UUID',
-              },
-              {
-                field: 'content',
-                message: 'Message content is required',
-              },
-            ]),
-          });
+      disconnectSockets(socketA, socketB);
+    });
 
-          socket.disconnect();
-          resolve();
-        } catch (err) {
-          socket.disconnect();
-          reject(err);
-        }
+    it('notifies all sockets of the leaving user that the conversation was removed', async () => {
+      const userA = await registerUser();
+      const userB = await registerUser();
+
+      const conversation = await createGroupConversation(userA.token, [
+        userB.user.id,
+      ]);
+
+      const socketB1 = createSocket(port, userB.token);
+      const socketB2 = createSocket(port, userB.token);
+
+      await Promise.all([connectSocket(socketB1), connectSocket(socketB2)]);
+
+      await Promise.all([
+        joinConversation(socketB1, conversation.id),
+        joinConversation(socketB2, conversation.id),
+      ]);
+
+      const removedPromise1 = waitForSocketEvent<{
+        conversationId: string;
+      }>(socketB1, 'conversation_removed');
+
+      const removedPromise2 = waitForSocketEvent<{
+        conversationId: string;
+      }>(socketB2, 'conversation_removed');
+
+      await request(app)
+        .delete(`/api/conversations/${conversation.id}/participants/me`)
+        .set('Authorization', `Bearer ${userB.token}`)
+        .expect(200);
+
+      const [event1, event2] = await Promise.all([
+        removedPromise1,
+        removedPromise2,
+      ]);
+
+      expect(event1).toEqual({
+        conversationId: conversation.id,
       });
 
-      socket.on('connect_error', reject);
+      expect(event2).toEqual({
+        conversationId: conversation.id,
+      });
+
+      disconnectSockets(socketB1, socketB2);
+    });
+
+    it('allows a group participant to send a message to another group participant', async () => {
+      const userA = await registerUser();
+      const userB = await registerUser();
+
+      const conversation = await createGroupConversation(userA.token, [
+        userB.user.id,
+      ]);
+
+      const socketA = createSocket(port, userA.token);
+      const socketB = createSocket(port, userB.token);
+
+      await Promise.all([connectSocket(socketA), connectSocket(socketB)]);
+
+      await Promise.all([
+        joinConversation(socketA, conversation.id),
+        joinConversation(socketB, conversation.id),
+      ]);
+
+      const messagePromise = waitForSocketEvent<{
+        message: {
+          content: string;
+          conversationId: string;
+          sender: {
+            id: string;
+          };
+        };
+      }>(socketB, 'new_message');
+
+      socketA.emit('send_message', {
+        conversationId: conversation.id,
+        content: 'Hello Group',
+      });
+
+      const event = await messagePromise;
+
+      expect(event.message).toEqual(
+        expect.objectContaining({
+          content: 'Hello Group',
+          conversationId: conversation.id,
+          sender: expect.objectContaining({
+            id: userA.user.id,
+          }),
+        }),
+      );
+
+      disconnectSockets(socketA, socketB);
     });
   });
 });

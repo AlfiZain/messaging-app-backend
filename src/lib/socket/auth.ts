@@ -20,6 +20,8 @@ export function authenticateSocket(
 
     socket.data.userId = payload.sub;
 
+    socket.join(`user:${payload.sub}`);
+
     next();
   } catch {
     next(new Error('Invalid token'));

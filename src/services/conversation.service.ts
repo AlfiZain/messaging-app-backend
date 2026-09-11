@@ -6,6 +6,7 @@ import type {
 import { ApiError } from '../utils/api-error.js';
 import * as userRepository from '../repositories/user.repository.js';
 import * as conversationRepository from '../repositories/conversation.repository.js';
+import { eventEmitter } from '../configs/event-emitter.js';
 
 export async function createDirectConversation(
   currentUserId: string,
@@ -85,10 +86,25 @@ export async function addConversationParticipants(
     throw new ApiError(409, 'One or more users are already participants');
   }
 
-  return conversationRepository.addGroupConversationParticipants(
-    conversationId,
-    userInput.userIds,
-  );
+  const addedParticipants =
+    await conversationRepository.addGroupConversationParticipants(
+      conversationId,
+      userInput.userIds,
+    );
+
+  const updatedConversation = {
+    id: conversation.id,
+    type: conversation.type,
+    name: conversation.name,
+    participants: [...conversation.participants, ...addedParticipants],
+  };
+
+  eventEmitter.emit('conversation:participants_added', {
+    conversation: updatedConversation,
+    addedParticipants,
+  });
+
+  return addedParticipants;
 }
 
 export async function leaveGroupConversation(
@@ -108,10 +124,15 @@ export async function leaveGroupConversation(
     throw new ApiError(400, 'You can only leave group conversations');
   }
 
-  return conversationRepository.removeGroupConversationParticipant(
+  await conversationRepository.removeGroupConversationParticipant(
     conversationId,
     userId,
   );
+
+  eventEmitter.emit('conversation:participant_left', {
+    conversationId,
+    userId,
+  });
 }
 
 export async function getUserConversations(userId: string) {

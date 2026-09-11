@@ -1,8 +1,8 @@
-import type { Server, Socket } from 'socket.io';
+import type { Socket } from 'socket.io';
 import { sendMessageEventSchema } from '../../schemas/message.schema.js';
 import * as messageService from '../../services/message.service.js';
 
-export function registerMessageHandlers(io: Server, socket: Socket) {
+export function registerMessageHandlers(socket: Socket) {
   socket.on('send_message', async (data) => {
     const result = sendMessageEventSchema.safeParse(data);
 
@@ -21,16 +21,8 @@ export function registerMessageHandlers(io: Server, socket: Socket) {
     const { conversationId, content } = result.data;
 
     try {
-      const message = await messageService.createMessage(
-        conversationId,
-        socket.data.userId,
-        { content },
-      );
-
-      const room = `conversation:${conversationId}`;
-
-      io.to(room).emit('new_message', {
-        message,
+      await messageService.createMessage(conversationId, socket.data.userId, {
+        content,
       });
     } catch (error) {
       if (error instanceof Error) {

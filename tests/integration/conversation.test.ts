@@ -975,8 +975,12 @@ describe('Conversations API', () => {
             id: conversationId,
             type: 'DIRECT',
             name: null,
+            directKey: expect.any(String),
+            createdAt: expect.any(String),
+            updatedAt: expect.any(String),
             participants: expect.arrayContaining([
               {
+                joinedAt: expect.any(String),
                 user: {
                   id: user.user.id,
                   displayName: user.user.displayName,
@@ -984,6 +988,7 @@ describe('Conversations API', () => {
                 },
               },
               {
+                joinedAt: expect.any(String),
                 user: {
                   id: targetUser.user.id,
                   displayName: targetUser.user.displayName,
@@ -1025,8 +1030,12 @@ describe('Conversations API', () => {
             id: conversationId,
             type: 'GROUP',
             name: 'Backend Team',
+            directKey: null,
+            createdAt: expect.any(String),
+            updatedAt: expect.any(String),
             participants: expect.arrayContaining([
               {
+                joinedAt: expect.any(String),
                 user: {
                   id: alice.user.id,
                   displayName: alice.user.displayName,
@@ -1034,16 +1043,10 @@ describe('Conversations API', () => {
                 },
               },
               {
+                joinedAt: expect.any(String),
                 user: {
                   id: bob.user.id,
                   displayName: bob.user.displayName,
-                  avatarUrl: null,
-                },
-              },
-              {
-                user: {
-                  id: charlie.user.id,
-                  displayName: charlie.user.displayName,
                   avatarUrl: null,
                 },
               },

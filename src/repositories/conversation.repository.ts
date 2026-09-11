@@ -80,6 +80,7 @@ export async function addGroupConversationParticipants(
           avatarUrl: true,
         },
       },
+      joinedAt: true,
     },
   });
 }
@@ -149,6 +150,7 @@ export async function findUserConversationById(
               avatarUrl: true,
             },
           },
+          joinedAt: true,
         },
       },
     },
