@@ -67,6 +67,30 @@ const connectSocket = async (socket: Socket) => {
   await waitForSocketEvent<void>(socket, 'connect');
 };
 
+const expectNoSocketEvent = (
+  socket: Socket,
+  event: string,
+  timeout = 100,
+): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    const handleEvent = () => {
+      clearTimeout(timer);
+      socket.off(event, handleEvent);
+
+      reject(
+        new Error(`Expected "${event}" not to be emitted within ${timeout}ms`),
+      );
+    };
+
+    const timer = setTimeout(() => {
+      socket.off(event, handleEvent);
+      resolve();
+    }, timeout);
+
+    socket.once(event, handleEvent);
+  });
+};
+
 const disconnectSockets = (...sockets: Socket[]) => {
   for (const socket of sockets) {
     socket.disconnect();
@@ -189,7 +213,7 @@ describe('Socket.IO', () => {
   });
 
   describe('conversation rooms', () => {
-    it('allows a conversation participant to join the conversation room', async () => {
+    it('allows a conversation participant to join the conversation room and receive presence snapshot', async () => {
       const userA = await registerUser();
       const userB = await registerUser();
 
@@ -201,7 +225,20 @@ describe('Socket.IO', () => {
       const socket = createSocket(port, userA.token);
 
       await connectSocket(socket);
-      await joinConversation(socket, conversation.id);
+
+      socket.emit('join_conversation', {
+        conversationId: conversation.id,
+      });
+
+      const event = await waitForSocketEvent<{
+        conversationId: string;
+        onlineUserIds: string[];
+      }>(socket, 'conversation_joined');
+
+      expect(event).toEqual({
+        conversationId: conversation.id,
+        onlineUserIds: [userA.user.id],
+      });
 
       socket.disconnect();
     });
@@ -504,6 +541,108 @@ describe('Socket.IO', () => {
     });
   });
 
+  describe('presence', () => {
+    it('tracks presence correctly across multiple active sockets', async () => {
+      const userA = await registerUser();
+      const userB = await registerUser();
+
+      const conversation = await createDirectConversation(
+        userA.token,
+        userB.user.id,
+      );
+
+      const socketB = createSocket(port, userB.token);
+
+      await connectSocket(socketB);
+      await joinConversation(socketB, conversation.id);
+
+      const socketA1 = createSocket(port, userA.token);
+
+      const onlinePromise = waitForSocketEvent<{
+        userId: string;
+      }>(socketB, 'user_online');
+
+      await connectSocket(socketA1);
+
+      const onlineEvent = await onlinePromise;
+
+      expect(onlineEvent).toEqual({
+        userId: userA.user.id,
+      });
+
+      const socketA2 = createSocket(port, userA.token);
+
+      await connectSocket(socketA2);
+
+      socketA1.disconnect();
+
+      await expectNoSocketEvent(socketB, 'user_offline');
+
+      const offlinePromise = waitForSocketEvent<{
+        userId: string;
+      }>(socketB, 'user_offline');
+
+      socketA2.disconnect();
+
+      const offlineEvent = await offlinePromise;
+
+      expect(offlineEvent).toEqual({
+        userId: userA.user.id,
+      });
+
+      socketB.disconnect();
+    });
+
+    it('emits user_online again when the user reconnects after going offline', async () => {
+      const userA = await registerUser();
+      const userB = await registerUser();
+
+      const conversation = await createDirectConversation(
+        userA.token,
+        userB.user.id,
+      );
+
+      const socketB = createSocket(port, userB.token);
+
+      await connectSocket(socketB);
+      await joinConversation(socketB, conversation.id);
+
+      const socketA1 = createSocket(port, userA.token);
+
+      const firstOnlinePromise = waitForSocketEvent<{
+        userId: string;
+      }>(socketB, 'user_online');
+
+      await connectSocket(socketA1);
+
+      await firstOnlinePromise;
+
+      const offlinePromise = waitForSocketEvent<{
+        userId: string;
+      }>(socketB, 'user_offline');
+
+      socketA1.disconnect();
+
+      await offlinePromise;
+
+      const socketA2 = createSocket(port, userA.token);
+
+      const reconnectOnlinePromise = waitForSocketEvent<{
+        userId: string;
+      }>(socketB, 'user_online');
+
+      await connectSocket(socketA2);
+
+      const onlineEvent = await reconnectOnlinePromise;
+
+      expect(onlineEvent).toEqual({
+        userId: userA.user.id,
+      });
+
+      disconnectSockets(socketA2, socketB);
+    });
+  });
+
   describe('group events', () => {
     it('notifies conversation participants when a participant is added', async () => {
       const userA = await registerUser();
@@ -536,6 +675,7 @@ describe('Socket.IO', () => {
             id: string;
           };
         }>;
+        onlineUserIds: string[];
       }>(socketA, 'participant_added');
 
       const participantAddedPromiseB = waitForSocketEvent<{
@@ -545,6 +685,7 @@ describe('Socket.IO', () => {
             id: string;
           };
         }>;
+        onlineUserIds: string[];
       }>(socketB, 'participant_added');
 
       const conversationAddedPromise = waitForSocketEvent<{
@@ -553,6 +694,7 @@ describe('Socket.IO', () => {
           type: string;
           name: string;
         };
+        onlineUserIds: string[];
       }>(socketC, 'conversation_added');
 
       await request(app)
@@ -578,6 +720,11 @@ describe('Socket.IO', () => {
             }),
           }),
         ],
+        onlineUserIds: expect.arrayContaining([
+          userA.user.id,
+          userB.user.id,
+          userC.user.id,
+        ]),
       });
 
       expect(eventB).toEqual({
@@ -589,15 +736,25 @@ describe('Socket.IO', () => {
             }),
           }),
         ],
+        onlineUserIds: expect.arrayContaining([
+          userA.user.id,
+          userB.user.id,
+          userC.user.id,
+        ]),
       });
 
-      expect(eventC.conversation).toEqual(
-        expect.objectContaining({
+      expect(eventC).toEqual({
+        conversation: expect.objectContaining({
           id: conversation.id,
           type: 'GROUP',
           name: 'Test Group',
         }),
-      );
+        onlineUserIds: expect.arrayContaining([
+          userA.user.id,
+          userB.user.id,
+          userC.user.id,
+        ]),
+      });
 
       disconnectSockets(socketA, socketB, socketC);
     });
@@ -620,12 +777,14 @@ describe('Socket.IO', () => {
         conversation: {
           id: string;
         };
+        onlineUserIds: string[];
       }>(socketC1, 'conversation_added');
 
       const conversationAddedPromise2 = waitForSocketEvent<{
         conversation: {
           id: string;
         };
+        onlineUserIds: string[];
       }>(socketC2, 'conversation_added');
 
       await request(app)
@@ -641,8 +800,19 @@ describe('Socket.IO', () => {
         conversationAddedPromise2,
       ]);
 
-      expect(event1.conversation.id).toBe(conversation.id);
-      expect(event2.conversation.id).toBe(conversation.id);
+      expect(event1).toEqual({
+        conversation: expect.objectContaining({
+          id: conversation.id,
+        }),
+        onlineUserIds: expect.arrayContaining([userC.user.id]),
+      });
+
+      expect(event2).toEqual({
+        conversation: expect.objectContaining({
+          id: conversation.id,
+        }),
+        onlineUserIds: expect.arrayContaining([userC.user.id]),
+      });
 
       disconnectSockets(socketC1, socketC2);
     });

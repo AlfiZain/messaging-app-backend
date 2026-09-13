@@ -1,6 +1,7 @@
 import type { Socket } from 'socket.io';
 import { joinConversationSchema } from '../../schemas/conversation.schema.js';
 import * as conversationService from '../../services/conversation.service.js';
+import { getOnlineUserIds } from './presence.js';
 
 export function registerConversationHandlers(socket: Socket) {
   socket.on('join_conversation', async (data: { conversationId?: string }) => {
@@ -20,16 +21,22 @@ export function registerConversationHandlers(socket: Socket) {
 
       const { conversationId } = result.data;
 
-      await conversationService.validateAndGetConversation(
-        conversationId,
-        socket.data.userId,
-      );
+      const { participants } =
+        await conversationService.validateAndGetConversation(
+          conversationId,
+          socket.data.userId,
+        );
 
       const room = `conversation:${conversationId}`;
       await socket.join(room);
 
+      const onlineUserIds = getOnlineUserIds(
+        participants.map((participant) => participant.user.id),
+      );
+
       socket.emit('conversation_joined', {
         conversationId,
+        onlineUserIds,
       });
     } catch (error: unknown) {
       const message =

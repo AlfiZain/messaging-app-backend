@@ -7,6 +7,7 @@ import { ApiError } from '../utils/api-error.js';
 import * as userRepository from '../repositories/user.repository.js';
 import * as conversationRepository from '../repositories/conversation.repository.js';
 import { eventEmitter } from '../configs/event-emitter.js';
+import { getOnlineUserIds } from '../lib/socket/presence.js';
 
 export async function createDirectConversation(
   currentUserId: string,
@@ -99,9 +100,14 @@ export async function addConversationParticipants(
     participants: [...conversation.participants, ...addedParticipants],
   };
 
+  const onlineUserIds = getOnlineUserIds(
+    updatedConversation.participants.map((participant) => participant.user.id),
+  );
+
   eventEmitter.emit('conversation:participants_added', {
     conversation: updatedConversation,
     addedParticipants,
+    onlineUserIds,
   });
 
   return addedParticipants;

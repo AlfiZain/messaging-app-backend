@@ -1,5 +1,6 @@
 import type { Server } from 'socket.io';
 import { eventEmitter } from '../../configs/event-emitter.js';
+import * as conversationRepository from '../../repositories/conversation.repository.js';
 
 export function registerEventHandler(io: Server) {
   eventEmitter.on('message:created', (message) => {
@@ -10,17 +11,19 @@ export function registerEventHandler(io: Server) {
 
   eventEmitter.on(
     'conversation:participants_added',
-    ({ conversation, addedParticipants }) => {
+    ({ conversation, addedParticipants, onlineUserIds }) => {
       const room = `conversation:${conversation.id}`;
 
       io.to(room).emit('participant_added', {
         conversationId: conversation.id,
         participants: addedParticipants,
+        onlineUserIds,
       });
 
       for (const participant of addedParticipants) {
         io.to(`user:${participant.user.id}`).emit('conversation_added', {
           conversation,
+          onlineUserIds,
         });
       }
     },
@@ -42,4 +45,22 @@ export function registerEventHandler(io: Server) {
       }
     },
   );
+
+  eventEmitter.on('presence:user_online', async ({ userId }) => {
+    const conversations =
+      await conversationRepository.findConversationsByUserId(userId);
+
+    for (const conversation of conversations) {
+      io.to(`conversation:${conversation.id}`).emit('user_online', { userId });
+    }
+  });
+
+  eventEmitter.on('presence:user_offline', async ({ userId }) => {
+    const conversations =
+      await conversationRepository.findConversationsByUserId(userId);
+
+    for (const conversation of conversations) {
+      io.to(`conversation:${conversation.id}`).emit('user_offline', { userId });
+    }
+  });
 }

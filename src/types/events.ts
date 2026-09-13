@@ -27,10 +27,15 @@ export type MessageCreatedEvent = {
   };
 };
 
+export type UserPresenceEvent = {
+  userId: string;
+};
+
 export type AppEvents = {
   'conversation:participants_added': {
     conversation: ConversationSummaryEvent;
     addedParticipants: ConversationParticipantEvent[];
+    onlineUserIds: string[];
   };
 
   'conversation:participant_left': {
@@ -39,4 +44,7 @@ export type AppEvents = {
   };
 
   'message:created': MessageCreatedEvent;
+
+  'presence:user_online': UserPresenceEvent;
+  'presence:user_offline': UserPresenceEvent;
 };
