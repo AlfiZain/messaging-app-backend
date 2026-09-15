@@ -27,3 +27,31 @@ export async function getConversationMessages(req: Request, res: Response) {
     data: { messages },
   });
 }
+
+export async function markMessageAsDelivered(req: Request, res: Response) {
+  const message = await messageService.markMessageAsDelivered(
+    req.params.conversationId as string,
+    req.params.messageId as string,
+    req.userId!,
+  );
+
+  return res.status(200).json({
+    success: true,
+    message: 'Message marked as delivered successfully',
+    data: { message },
+  });
+}
+
+export async function markMessageAsRead(req: Request, res: Response) {
+  const message = await messageService.markMessageAsRead(
+    req.params.conversationId as string,
+    req.params.messageId as string,
+    req.userId!,
+  );
+
+  return res.status(200).json({
+    success: true,
+    message: 'Message marked as read successfully',
+    data: { message },
+  });
+}

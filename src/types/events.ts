@@ -31,6 +31,14 @@ export type UserPresenceEvent = {
   userId: string;
 };
 
+export type MessageStatusEvent = {
+  messageId: string;
+  conversationId: string;
+  senderId: string;
+  userId: string;
+  timestamp: Date;
+};
+
 export type AppEvents = {
   'conversation:participants_added': {
     conversation: ConversationSummaryEvent;
@@ -44,6 +52,8 @@ export type AppEvents = {
   };
 
   'message:created': MessageCreatedEvent;
+  'message:delivered': MessageStatusEvent;
+  'message:read': MessageStatusEvent;
 
   'presence:user_online': UserPresenceEvent;
   'presence:user_offline': UserPresenceEvent;

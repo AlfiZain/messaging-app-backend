@@ -541,6 +541,156 @@ describe('Socket.IO', () => {
     });
   });
 
+  describe('messages status', () => {
+    it('delivers message_delivered event to all sender sockets', async () => {
+      const sender = await registerUser();
+      const recipient = await registerUser();
+
+      const conversation = await createDirectConversation(
+        sender.token,
+        recipient.user.id,
+      );
+
+      const messageResponse = await request(app)
+        .post(`/api/conversations/${conversation.id}/messages`)
+        .set('Authorization', `Bearer ${sender.token}`)
+        .send({
+          content: 'Hello from multi-device',
+        })
+        .expect(201);
+
+      const messageId = messageResponse.body.data.message.id;
+
+      const senderSocket1 = createSocket(port, sender.token);
+      const senderSocket2 = createSocket(port, sender.token);
+      const recipientSocket = createSocket(port, recipient.token);
+
+      await Promise.all([
+        connectSocket(senderSocket1),
+        connectSocket(senderSocket2),
+        connectSocket(recipientSocket),
+      ]);
+
+      const deliveredPromise1 = waitForSocketEvent<{
+        messageId: string;
+        conversationId: string;
+        deliveredAt: string;
+      }>(senderSocket1, 'message_delivered');
+
+      const deliveredPromise2 = waitForSocketEvent<{
+        messageId: string;
+        conversationId: string;
+        deliveredAt: string;
+      }>(senderSocket2, 'message_delivered');
+
+      recipientSocket.emit('mark_message_delivered', {
+        messageId,
+        conversationId: conversation.id,
+      });
+
+      const [event1, event2] = await Promise.all([
+        deliveredPromise1,
+        deliveredPromise2,
+      ]);
+
+      expect(event1).toEqual({
+        messageId,
+        conversationId: conversation.id,
+        userId: recipient.user.id,
+        deliveredAt: expect.any(String),
+      });
+
+      expect(event2).toEqual({
+        messageId,
+        conversationId: conversation.id,
+        userId: recipient.user.id,
+        deliveredAt: expect.any(String),
+      });
+
+      expect(event1.deliveredAt).toBe(event2.deliveredAt);
+
+      disconnectSockets(senderSocket1, senderSocket2, recipientSocket);
+    });
+
+    it('delivers message_read event to all sender sockets', async () => {
+      const sender = await registerUser();
+      const recipient = await registerUser();
+
+      const conversation = await createDirectConversation(
+        sender.token,
+        recipient.user.id,
+      );
+
+      const messageResponse = await request(app)
+        .post(`/api/conversations/${conversation.id}/messages`)
+        .set('Authorization', `Bearer ${sender.token}`)
+        .send({
+          content: 'Hello from multi-device',
+        })
+        .expect(201);
+
+      const messageId = messageResponse.body.data.message.id;
+
+      const senderSocket1 = createSocket(port, sender.token);
+      const senderSocket2 = createSocket(port, sender.token);
+      const recipientSocket = createSocket(port, recipient.token);
+
+      await Promise.all([
+        connectSocket(senderSocket1),
+        connectSocket(senderSocket2),
+        connectSocket(recipientSocket),
+      ]);
+
+      const deliveredPromise = waitForSocketEvent<{
+        messageId: string;
+      }>(senderSocket1, 'message_delivered');
+
+      recipientSocket.emit('mark_message_delivered', {
+        messageId,
+        conversationId: conversation.id,
+      });
+
+      await deliveredPromise;
+
+      const readPromise1 = waitForSocketEvent<{
+        messageId: string;
+        conversationId: string;
+        readAt: string;
+      }>(senderSocket1, 'message_read');
+
+      const readPromise2 = waitForSocketEvent<{
+        messageId: string;
+        conversationId: string;
+        readAt: string;
+      }>(senderSocket2, 'message_read');
+
+      recipientSocket.emit('mark_message_read', {
+        messageId,
+        conversationId: conversation.id,
+      });
+
+      const [event1, event2] = await Promise.all([readPromise1, readPromise2]);
+
+      expect(event1).toEqual({
+        messageId,
+        conversationId: conversation.id,
+        userId: recipient.user.id,
+        readAt: expect.any(String),
+      });
+
+      expect(event2).toEqual({
+        messageId,
+        conversationId: conversation.id,
+        userId: recipient.user.id,
+        readAt: expect.any(String),
+      });
+
+      expect(event1.readAt).toBe(event2.readAt);
+
+      disconnectSockets(senderSocket1, senderSocket2, recipientSocket);
+    });
+  });
+
   describe('presence', () => {
     it('tracks presence correctly across multiple active sockets', async () => {
       const userA = await registerUser();

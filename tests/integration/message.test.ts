@@ -475,4 +475,411 @@ describe('Messages API', () => {
       });
     });
   });
+
+  describe('PATCH /api/conversations/:conversationId/messages/:messageId/delivered', () => {
+    it('should mark a message as delivered', async () => {
+      const sender = await registerUser();
+      const recipient = await registerUser();
+
+      const conversationResponse = await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${sender.token}`)
+        .send({
+          userId: recipient.user.id,
+        });
+
+      const conversationId = conversationResponse.body.data.conversation.id;
+
+      const messageResponse = await request(app)
+        .post(`/api/conversations/${conversationId}/messages`)
+        .set('Authorization', `Bearer ${sender.token}`)
+        .send({
+          content: 'Hello',
+        });
+
+      const messageId = messageResponse.body.data.message.id;
+
+      const response = await request(app)
+        .patch(
+          `/api/conversations/${conversationId}/messages/${messageId}/delivered`,
+        )
+        .set('Authorization', `Bearer ${recipient.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        success: true,
+        message: 'Message marked as delivered successfully',
+        data: {
+          message: {
+            id: messageId,
+            conversationId,
+            senderId: sender.user.id,
+          },
+        },
+      });
+
+      expect(response.body.data.message.deliveredAt).toEqual(
+        expect.any(String),
+      );
+    });
+
+    it('should reject the sender from marking their own message as delivered', async () => {
+      const sender = await registerUser();
+      const recipient = await registerUser();
+
+      const conversationResponse = await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${sender.token}`)
+        .send({
+          userId: recipient.user.id,
+        });
+
+      const conversationId = conversationResponse.body.data.conversation.id;
+
+      const messageResponse = await request(app)
+        .post(`/api/conversations/${conversationId}/messages`)
+        .set('Authorization', `Bearer ${sender.token}`)
+        .send({
+          content: 'Hello',
+        });
+
+      const messageId = messageResponse.body.data.message.id;
+
+      const response = await request(app)
+        .patch(
+          `/api/conversations/${conversationId}/messages/${messageId}/delivered`,
+        )
+        .set('Authorization', `Bearer ${sender.token}`);
+
+      expect(response.status).toBe(403);
+      expect(response.body.message).toBe(
+        'Sender cannot mark their own message as delivered',
+      );
+    });
+
+    it('should reject a non-participant from marking a message as delivered', async () => {
+      const sender = await registerUser();
+      const recipient = await registerUser();
+      const outsider = await registerUser();
+
+      const conversationResponse = await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${sender.token}`)
+        .send({
+          userId: recipient.user.id,
+        });
+
+      const conversationId = conversationResponse.body.data.conversation.id;
+
+      const messageResponse = await request(app)
+        .post(`/api/conversations/${conversationId}/messages`)
+        .set('Authorization', `Bearer ${sender.token}`)
+        .send({
+          content: 'Hello',
+        });
+
+      const messageId = messageResponse.body.data.message.id;
+
+      const response = await request(app)
+        .patch(
+          `/api/conversations/${conversationId}/messages/${messageId}/delivered`,
+        )
+        .set('Authorization', `Bearer ${outsider.token}`);
+
+      expect(response.status).toBe(404);
+      expect(response.body.message).toBe('Conversation not found');
+    });
+
+    it('should reject a message from another conversation', async () => {
+      const sender = await registerUser();
+      const recipient = await registerUser();
+      const otherUser = await registerUser();
+
+      const conversationResponse = await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${sender.token}`)
+        .send({
+          userId: recipient.user.id,
+        });
+
+      const conversationId = conversationResponse.body.data.conversation.id;
+
+      const otherConversationResponse = await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${sender.token}`)
+        .send({
+          userId: otherUser.user.id,
+        });
+
+      const otherConversationId =
+        otherConversationResponse.body.data.conversation.id;
+
+      const messageResponse = await request(app)
+        .post(`/api/conversations/${conversationId}/messages`)
+        .set('Authorization', `Bearer ${sender.token}`)
+        .send({
+          content: 'Hello',
+        });
+
+      const messageId = messageResponse.body.data.message.id;
+
+      const response = await request(app)
+        .patch(
+          `/api/conversations/${otherConversationId}/messages/${messageId}/delivered`,
+        )
+        .set('Authorization', `Bearer ${recipient.token}`);
+
+      expect(response.status).toBe(404);
+    });
+
+    it('should not change deliveredAt when delivered is called twice', async () => {
+      const sender = await registerUser();
+      const recipient = await registerUser();
+
+      const conversationResponse = await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${sender.token}`)
+        .send({
+          userId: recipient.user.id,
+        });
+
+      const conversationId = conversationResponse.body.data.conversation.id;
+
+      const messageResponse = await request(app)
+        .post(`/api/conversations/${conversationId}/messages`)
+        .set('Authorization', `Bearer ${sender.token}`)
+        .send({
+          content: 'Hello',
+        });
+
+      const messageId = messageResponse.body.data.message.id;
+
+      const firstResponse = await request(app)
+        .patch(
+          `/api/conversations/${conversationId}/messages/${messageId}/delivered`,
+        )
+        .set('Authorization', `Bearer ${recipient.token}`);
+
+      const firstDeliveredAt = firstResponse.body.data.message.deliveredAt;
+
+      const secondResponse = await request(app)
+        .patch(
+          `/api/conversations/${conversationId}/messages/${messageId}/delivered`,
+        )
+        .set('Authorization', `Bearer ${recipient.token}`);
+
+      expect(secondResponse.status).toBe(200);
+      expect(secondResponse.body.data.message.deliveredAt).toBe(
+        firstDeliveredAt,
+      );
+    });
+  });
+
+  describe('PATCH /api/conversations/:conversationId/messages/:messageId/read', () => {
+    it('should mark a delivered message as read', async () => {
+      const sender = await registerUser();
+      const recipient = await registerUser();
+
+      const conversationResponse = await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${sender.token}`)
+        .send({
+          userId: recipient.user.id,
+        });
+
+      const conversationId = conversationResponse.body.data.conversation.id;
+
+      const messageResponse = await request(app)
+        .post(`/api/conversations/${conversationId}/messages`)
+        .set('Authorization', `Bearer ${sender.token}`)
+        .send({
+          content: 'Hello',
+        });
+
+      const messageId = messageResponse.body.data.message.id;
+
+      await request(app)
+        .patch(
+          `/api/conversations/${conversationId}/messages/${messageId}/delivered`,
+        )
+        .set('Authorization', `Bearer ${recipient.token}`);
+
+      const response = await request(app)
+        .patch(
+          `/api/conversations/${conversationId}/messages/${messageId}/read`,
+        )
+        .set('Authorization', `Bearer ${recipient.token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        success: true,
+        message: 'Message marked as read successfully',
+        data: {
+          message: {
+            id: messageId,
+            conversationId,
+            senderId: sender.user.id,
+          },
+        },
+      });
+
+      expect(response.body.data.message.deliveredAt).toEqual(
+        expect.any(String),
+      );
+
+      expect(response.body.data.message.readAt).toEqual(expect.any(String));
+    });
+
+    it('should reject marking a message as read before it is delivered', async () => {
+      const sender = await registerUser();
+      const recipient = await registerUser();
+
+      const conversationResponse = await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${sender.token}`)
+        .send({
+          userId: recipient.user.id,
+        });
+
+      const conversationId = conversationResponse.body.data.conversation.id;
+
+      const messageResponse = await request(app)
+        .post(`/api/conversations/${conversationId}/messages`)
+        .set('Authorization', `Bearer ${sender.token}`)
+        .send({
+          content: 'Hello',
+        });
+
+      const messageId = messageResponse.body.data.message.id;
+
+      const response = await request(app)
+        .patch(
+          `/api/conversations/${conversationId}/messages/${messageId}/read`,
+        )
+        .set('Authorization', `Bearer ${recipient.token}`);
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toBe(
+        'Message must be delivered before it can be marked as read',
+      );
+    });
+
+    it('should reject the sender from marking their own message as read', async () => {
+      const sender = await registerUser();
+      const recipient = await registerUser();
+
+      const conversationResponse = await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${sender.token}`)
+        .send({
+          userId: recipient.user.id,
+        });
+
+      const conversationId = conversationResponse.body.data.conversation.id;
+
+      const messageResponse = await request(app)
+        .post(`/api/conversations/${conversationId}/messages`)
+        .set('Authorization', `Bearer ${sender.token}`)
+        .send({
+          content: 'Hello',
+        });
+
+      const messageId = messageResponse.body.data.message.id;
+
+      await request(app)
+        .patch(
+          `/api/conversations/${conversationId}/messages/${messageId}/delivered`,
+        )
+        .set('Authorization', `Bearer ${recipient.token}`);
+
+      const response = await request(app)
+        .patch(
+          `/api/conversations/${conversationId}/messages/${messageId}/read`,
+        )
+        .set('Authorization', `Bearer ${sender.token}`);
+
+      expect(response.status).toBe(403);
+      expect(response.body.message).toBe(
+        'Sender cannot mark their own message as read',
+      );
+    });
+
+    it('should reject a non-participant from marking a message as read', async () => {
+      const sender = await registerUser();
+      const recipient = await registerUser();
+      const outsider = await registerUser();
+
+      const conversationResponse = await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${sender.token}`)
+        .send({
+          userId: recipient.user.id,
+        });
+
+      const conversationId = conversationResponse.body.data.conversation.id;
+
+      const messageResponse = await request(app)
+        .post(`/api/conversations/${conversationId}/messages`)
+        .set('Authorization', `Bearer ${sender.token}`)
+        .send({
+          content: 'Hello',
+        });
+
+      const messageId = messageResponse.body.data.message.id;
+
+      const response = await request(app)
+        .patch(
+          `/api/conversations/${conversationId}/messages/${messageId}/read`,
+        )
+        .set('Authorization', `Bearer ${outsider.token}`);
+
+      expect(response.status).toBe(404);
+    });
+
+    it('should not change readAt when read is called twice', async () => {
+      const sender = await registerUser();
+      const recipient = await registerUser();
+
+      const conversationResponse = await request(app)
+        .post('/api/conversations/direct')
+        .set('Authorization', `Bearer ${sender.token}`)
+        .send({
+          userId: recipient.user.id,
+        });
+
+      const conversationId = conversationResponse.body.data.conversation.id;
+
+      const messageResponse = await request(app)
+        .post(`/api/conversations/${conversationId}/messages`)
+        .set('Authorization', `Bearer ${sender.token}`)
+        .send({
+          content: 'Hello',
+        });
+
+      const messageId = messageResponse.body.data.message.id;
+
+      await request(app)
+        .patch(
+          `/api/conversations/${conversationId}/messages/${messageId}/delivered`,
+        )
+        .set('Authorization', `Bearer ${recipient.token}`);
+
+      const firstResponse = await request(app)
+        .patch(
+          `/api/conversations/${conversationId}/messages/${messageId}/read`,
+        )
+        .set('Authorization', `Bearer ${recipient.token}`);
+
+      const firstReadAt = firstResponse.body.data.message.readAt;
+
+      const secondResponse = await request(app)
+        .patch(
+          `/api/conversations/${conversationId}/messages/${messageId}/read`,
+        )
+        .set('Authorization', `Bearer ${recipient.token}`);
+
+      expect(secondResponse.status).toBe(200);
+      expect(secondResponse.body.data.message.readAt).toBe(firstReadAt);
+    });
+  });
 });

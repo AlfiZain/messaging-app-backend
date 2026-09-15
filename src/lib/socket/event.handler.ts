@@ -10,6 +10,34 @@ export function registerEventHandler(io: Server) {
   });
 
   eventEmitter.on(
+    'message:delivered',
+    ({ messageId, conversationId, senderId, userId, timestamp }) => {
+      const room = `user:${senderId}`;
+
+      io.to(room).emit('message_delivered', {
+        messageId,
+        conversationId,
+        userId,
+        deliveredAt: timestamp,
+      });
+    },
+  );
+
+  eventEmitter.on(
+    'message:read',
+    ({ messageId, conversationId, senderId, userId, timestamp }) => {
+      const room = `user:${senderId}`;
+
+      io.to(room).emit('message_read', {
+        messageId,
+        conversationId,
+        userId,
+        readAt: timestamp,
+      });
+    },
+  );
+
+  eventEmitter.on(
     'conversation:participants_added',
     ({ conversation, addedParticipants, onlineUserIds }) => {
       const room = `conversation:${conversation.id}`;

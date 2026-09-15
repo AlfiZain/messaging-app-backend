@@ -59,11 +59,13 @@ model ConversationParticipant {
 }
 
 model Message {
-  id             String   @id @default(uuid(7)) @db.Uuid
-  conversationId String   @db.Uuid
-  senderId       String   @db.Uuid
+  id             String    @id @default(uuid(7)) @db.Uuid
+  conversationId String    @db.Uuid
+  senderId       String    @db.Uuid
   content        String
-  createdAt      DateTime @default(now())
+  createdAt      DateTime  @default(now())
+  deliveredAt    DateTime?
+  readAt         DateTime?
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender       User         @relation(fields: [senderId], references: [id], onDelete: Restrict)
