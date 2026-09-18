@@ -7,6 +7,7 @@ import {
   createMessageSchema,
   messageStatusParamsSchema,
 } from '../schemas/message.schema.js';
+import { uploadImage } from '../lib/multer.js';
 
 export const nestedMessageRouter = Router({ mergeParams: true });
 
@@ -21,6 +22,7 @@ nestedMessageRouter.post(
   '/',
   authenticate,
   validate(getDetailUserConversationParamsSchema, 'params'),
+  uploadImage.single('image'),
   validate(createMessageSchema, 'body'),
   messageController.createMessage,
 );

@@ -19,7 +19,10 @@ export type MessageCreatedEvent = {
   conversationId: string;
   senderId: string;
   content: string;
+  imageUrl: string | null;
   createdAt: Date;
+  deliveredAt: Date | null;
+  readAt: Date | null;
   sender: {
     id: string;
     displayName: string;

@@ -1,4 +1,8 @@
 import { eventEmitter } from '../configs/event-emitter.js';
+import {
+  deleteImageFromCloudinary,
+  uploadImageToCloudinary,
+} from '../lib/cloudinary.js';
 import * as conversationRepository from '../repositories/conversation.repository.js';
 import * as messageRepository from '../repositories/message.repository.js';
 import type { createMessageInput } from '../schemas/message.schema.js';
@@ -8,6 +12,7 @@ export async function createMessage(
   conversationId: string,
   senderId: string,
   userInput: createMessageInput,
+  file?: Express.Multer.File,
 ) {
   const conversation = await conversationRepository.findUserConversationById(
     conversationId,
@@ -18,15 +23,47 @@ export async function createMessage(
     throw new ApiError(404, 'Conversation not found');
   }
 
-  const message = await messageRepository.createMessage(
-    conversationId,
-    senderId,
-    userInput.content,
-  );
+  if (!userInput.content && !file) {
+    throw new ApiError(400, 'Message content or image is required');
+  }
 
-  eventEmitter.emit('message:created', message);
+  let imageUrl: string | null = null;
+  let imagePublicId: string | undefined;
 
-  return message;
+  try {
+    if (file) {
+      const uploadedImage = await uploadImageToCloudinary(file.buffer, {
+        folder: 'messaging-app/messages',
+      });
+
+      imageUrl = uploadedImage.secure_url;
+      imagePublicId = uploadedImage.public_id;
+    }
+
+    const message = await messageRepository.createMessage(
+      conversationId,
+      senderId,
+      userInput.content,
+      imageUrl,
+    );
+
+    eventEmitter.emit('message:created', message);
+
+    return message;
+  } catch (error) {
+    if (imagePublicId) {
+      try {
+        await deleteImageFromCloudinary(imagePublicId);
+      } catch (cleanupError) {
+        console.error(
+          'Failed to cleanup uploaded message image:',
+          cleanupError,
+        );
+      }
+    }
+
+    throw error;
+  }
 }
 
 export async function getConversationMessages(

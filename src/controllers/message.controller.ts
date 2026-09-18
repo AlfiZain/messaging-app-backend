@@ -6,6 +6,7 @@ export async function createMessage(req: Request, res: Response) {
     req.params.conversationId as string,
     req.userId!,
     req.body,
+    req.file,
   );
 
   return res.status(201).json({

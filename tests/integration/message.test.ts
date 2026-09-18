@@ -1,9 +1,10 @@
 import request from 'supertest';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import crypto from 'node:crypto';
 
 import app from '../../src/app.js';
 import { prisma } from '../../src/lib/prisma.js';
+import { uploadImageToCloudinary } from '../../src/lib/cloudinary.js';
 
 const createUniqueUserData = () => {
   const uuid = crypto.randomUUID().slice(0, 8);
@@ -36,8 +37,20 @@ const createDirectConversation = async (token: string, userId: string) => {
   return response.body.data.conversation;
 };
 
+vi.mock('../../src/lib/cloudinary.js', () => ({
+  uploadImageToCloudinary: vi.fn(),
+  cloudinary: {
+    uploader: {
+      upload_stream: vi.fn(),
+      destroy: vi.fn(),
+    },
+  },
+}));
+
 describe('Messages API', () => {
   beforeEach(async () => {
+    vi.clearAllMocks();
+
     await prisma.message.deleteMany();
     await prisma.conversationParticipant.deleteMany();
     await prisma.conversation.deleteMany();
@@ -167,6 +180,77 @@ describe('Messages API', () => {
       expect(response.body.data.message.senderId).toBe(targetUser.user.id);
     });
 
+    it('creates an image-only message', async () => {
+      const user = await registerUser();
+      const targetUser = await registerUser();
+
+      const conversation = await createDirectConversation(
+        user.token,
+        targetUser.user.id,
+      );
+
+      vi.mocked(uploadImageToCloudinary).mockResolvedValue({
+        secure_url: 'https://res.cloudinary.com/test/messages/image.jpg',
+        public_id: 'messages/test-image',
+      } as never);
+
+      const response = await request(app)
+        .post(`/api/conversations/${conversation.id}/messages`)
+        .set('Authorization', `Bearer ${user.token}`)
+        .attach('image', Buffer.from('fake image'), 'image.jpg');
+
+      expect(response.status).toBe(201);
+
+      expect(response.body.data.message).toEqual(
+        expect.objectContaining({
+          conversationId: conversation.id,
+          senderId: user.user.id,
+          content: '',
+          imageUrl: 'https://res.cloudinary.com/test/messages/image.jpg',
+        }),
+      );
+
+      expect(uploadImageToCloudinary).toHaveBeenCalledOnce();
+
+      expect(await prisma.message.count()).toBe(1);
+    });
+
+    it('creates a message with text and image', async () => {
+      const user = await registerUser();
+      const targetUser = await registerUser();
+
+      const conversation = await createDirectConversation(
+        user.token,
+        targetUser.user.id,
+      );
+
+      vi.mocked(uploadImageToCloudinary).mockResolvedValue({
+        secure_url: 'https://res.cloudinary.com/test/messages/image.jpg',
+        public_id: 'messages/test-image',
+      } as never);
+
+      const response = await request(app)
+        .post(`/api/conversations/${conversation.id}/messages`)
+        .set('Authorization', `Bearer ${user.token}`)
+        .field('content', 'Check this image')
+        .attach('image', Buffer.from('fake image'), 'image.jpg');
+
+      expect(response.status).toBe(201);
+
+      expect(response.body.data.message).toEqual(
+        expect.objectContaining({
+          conversationId: conversation.id,
+          senderId: user.user.id,
+          content: 'Check this image',
+          imageUrl: 'https://res.cloudinary.com/test/messages/image.jpg',
+        }),
+      );
+
+      expect(uploadImageToCloudinary).toHaveBeenCalledOnce();
+
+      expect(await prisma.message.count()).toBe(1);
+    });
+
     it('returns 404 when the conversation does not exist', async () => {
       const user = await registerUser();
 
@@ -257,6 +341,50 @@ describe('Messages API', () => {
       expect(response.status).toBe(400);
 
       expect(response.body.success).toBe(false);
+      expect(await prisma.message.count()).toBe(0);
+    });
+
+    it('returns 400 when image type is invalid', async () => {
+      const user = await registerUser();
+      const targetUser = await registerUser();
+
+      const conversation = await createDirectConversation(
+        user.token,
+        targetUser.user.id,
+      );
+
+      const response = await request(app)
+        .post(`/api/conversations/${conversation.id}/messages`)
+        .set('Authorization', `Bearer ${user.token}`)
+        .attach('image', Buffer.from('not an image'), 'document.txt');
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+
+      expect(uploadImageToCloudinary).not.toHaveBeenCalled();
+      expect(await prisma.message.count()).toBe(0);
+    });
+
+    it('returns 400 when image exceeds 512 KB', async () => {
+      const user = await registerUser();
+      const targetUser = await registerUser();
+
+      const conversation = await createDirectConversation(
+        user.token,
+        targetUser.user.id,
+      );
+
+      const largeImage = Buffer.alloc(512 * 1024 + 1);
+
+      const response = await request(app)
+        .post(`/api/conversations/${conversation.id}/messages`)
+        .set('Authorization', `Bearer ${user.token}`)
+        .attach('image', largeImage, 'large-image.jpg');
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+
+      expect(uploadImageToCloudinary).not.toHaveBeenCalled();
       expect(await prisma.message.count()).toBe(0);
     });
 

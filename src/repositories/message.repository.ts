@@ -4,12 +4,14 @@ export async function createMessage(
   conversationId: string,
   senderId: string,
   content: string,
+  imageUrl?: string | null,
 ) {
   return prisma.message.create({
     data: {
       content,
       senderId,
       conversationId,
+      imageUrl,
     },
     include: {
       sender: {

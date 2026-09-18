@@ -43,4 +43,23 @@ export function uploadImageToCloudinary(
   });
 }
 
+export function deleteImageFromCloudinary(publicId: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    cloudinary.uploader.destroy(
+      publicId,
+      {
+        resource_type: 'image',
+      },
+      (error, result) => {
+        if (error || result?.result !== 'ok') {
+          reject(new ApiError(502, 'Cloudinary image deletion failed'));
+          return;
+        }
+
+        resolve();
+      },
+    );
+  });
+}
+
 export { cloudinary };

@@ -1,11 +1,20 @@
 import { createServer } from 'node:http';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { io as createClient, type Socket } from 'socket.io-client';
 import request from 'supertest';
 
 import app from '../../src/app.js';
 import { prisma } from '../../src/lib/prisma.js';
 import { initSocketServer } from '../../src/lib/socket/index.js';
+import { uploadImageToCloudinary } from '../../src/lib/cloudinary.js';
 
 const createUniqueUserData = () => {
   const uuid = crypto.randomUUID().slice(0, 8);
@@ -131,6 +140,16 @@ const joinConversation = async (socket: Socket, conversationId: string) => {
   await waitForSocketEvent(socket, 'conversation_joined');
 };
 
+vi.mock('../../src/lib/cloudinary.js', () => ({
+  uploadImageToCloudinary: vi.fn(),
+  cloudinary: {
+    uploader: {
+      upload_stream: vi.fn(),
+      destroy: vi.fn(),
+    },
+  },
+}));
+
 describe('Socket.IO', () => {
   let httpServer: ReturnType<typeof createServer>;
   let port: number;
@@ -154,6 +173,8 @@ describe('Socket.IO', () => {
   });
 
   beforeEach(async () => {
+    vi.clearAllMocks();
+
     await prisma.message.deleteMany();
     await prisma.conversationParticipant.deleteMany();
     await prisma.conversation.deleteMany();
@@ -460,6 +481,57 @@ describe('Socket.IO', () => {
       socketB.disconnect();
     });
 
+    it('delivers an image message event when a message is created through REST', async () => {
+      const userA = await registerUser();
+      const userB = await registerUser();
+
+      const conversation = await createDirectConversation(
+        userA.token,
+        userB.user.id,
+      );
+
+      vi.mocked(uploadImageToCloudinary).mockResolvedValue({
+        secure_url: 'https://example.com/message-image.jpg',
+        public_id: 'messages/test-image',
+      } as never);
+
+      const socketB = createSocket(port, userB.token);
+
+      await connectSocket(socketB);
+      await joinConversation(socketB, conversation.id);
+
+      const messagePromise = waitForSocketEvent<{
+        message: {
+          content: string;
+          imageUrl: string | null;
+          conversationId: string;
+          sender: {
+            id: string;
+          };
+        };
+      }>(socketB, 'new_message');
+
+      const image = Buffer.from('fake image');
+
+      await request(app)
+        .post(`/api/conversations/${conversation.id}/messages`)
+        .set('Authorization', `Bearer ${userA.token}`)
+        .field('content', 'Check this image')
+        .attach('image', image, 'image.jpg')
+        .expect(201);
+
+      const data = await messagePromise;
+
+      expect(data.message.content).toBe('Check this image');
+      expect(data.message.imageUrl).toBe(
+        'https://example.com/message-image.jpg',
+      );
+      expect(data.message.conversationId).toBe(conversation.id);
+      expect(data.message.sender.id).toBe(userA.user.id);
+
+      socketB.disconnect();
+    });
+
     it('rejects a message from a non-participant', async () => {
       const userA = await registerUser();
       const userB = await registerUser();
@@ -529,10 +601,6 @@ describe('Socket.IO', () => {
           {
             field: 'conversationId',
             message: 'Conversation ID must be a valid UUID',
-          },
-          {
-            field: 'content',
-            message: 'Message content is required',
           },
         ]),
       });
