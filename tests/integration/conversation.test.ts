@@ -66,6 +66,7 @@ describe('Conversations API', () => {
             directKey: expect.any(String),
             participants: expect.arrayContaining([
               {
+                joinedAt: expect.any(String),
                 user: {
                   id: user.user.id,
                   displayName: user.user.displayName,
@@ -73,6 +74,7 @@ describe('Conversations API', () => {
                 },
               },
               {
+                joinedAt: expect.any(String),
                 user: {
                   id: targetUser.user.id,
                   displayName: targetUser.user.displayName,

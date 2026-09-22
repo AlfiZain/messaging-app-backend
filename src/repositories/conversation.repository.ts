@@ -1,5 +1,16 @@
 import { prisma } from '../lib/prisma.js';
 
+const participantWithUserSelect = {
+  joinedAt: true,
+  user: {
+    select: {
+      id: true,
+      displayName: true,
+      avatarUrl: true,
+    },
+  },
+} as const;
+
 export async function upsertDirectConversation(
   directKey: string,
   userIds: [string, string],
@@ -19,15 +30,7 @@ export async function upsertDirectConversation(
     update: {},
     include: {
       participants: {
-        select: {
-          user: {
-            select: {
-              id: true,
-              displayName: true,
-              avatarUrl: true,
-            },
-          },
-        },
+        select: participantWithUserSelect,
       },
     },
   });
@@ -49,15 +52,7 @@ export async function createGroupConversation(
     },
     include: {
       participants: {
-        select: {
-          user: {
-            select: {
-              id: true,
-              displayName: true,
-              avatarUrl: true,
-            },
-          },
-        },
+        select: participantWithUserSelect,
       },
     },
   });
@@ -72,16 +67,7 @@ export async function addGroupConversationParticipants(
       conversationId,
       userId,
     })),
-    select: {
-      user: {
-        select: {
-          id: true,
-          displayName: true,
-          avatarUrl: true,
-        },
-      },
-      joinedAt: true,
-    },
+    select: participantWithUserSelect,
   });
 }
 
@@ -110,15 +96,7 @@ export async function findConversationsByUserId(userId: string) {
     },
     include: {
       participants: {
-        select: {
-          user: {
-            select: {
-              id: true,
-              displayName: true,
-              avatarUrl: true,
-            },
-          },
-        },
+        select: participantWithUserSelect,
       },
     },
     orderBy: {
@@ -142,16 +120,7 @@ export async function findUserConversationById(
     },
     include: {
       participants: {
-        select: {
-          user: {
-            select: {
-              id: true,
-              displayName: true,
-              avatarUrl: true,
-            },
-          },
-          joinedAt: true,
-        },
+        select: participantWithUserSelect,
       },
     },
   });
