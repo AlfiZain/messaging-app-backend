@@ -19,6 +19,10 @@ export function generateOpenApiDocument() {
     },
     servers: [
       {
+        url: 'https://messaging-app-backend-alfi.up.railway.app',
+        description: 'Production server',
+      },
+      {
         url: `http://localhost:${env.port}`,
         description: 'Local development server',
       },
