@@ -4,6 +4,7 @@ import userRouter from './routes/user.route.js';
 import { errorHandler } from './middlewares/error.middleware.js';
 import conversationRouter from './routes/conversation.route.js';
 import { docsRouter } from './routes/docs.route.js';
+import { notFound } from './middlewares/not-found.middleware.js';
 
 const app = express();
 
@@ -22,6 +23,7 @@ app.use('/api/conversations', conversationRouter);
 
 app.use('/api/docs', docsRouter);
 
+app.use(notFound);
 app.use(errorHandler);
 
 export default app;
