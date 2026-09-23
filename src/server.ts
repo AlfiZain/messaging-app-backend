@@ -1,7 +1,8 @@
 import { createServer } from 'node:http';
 import app from './app.js';
-import { env } from 'node:process';
+
 import { initSocketServer } from './lib/socket/index.js';
+import { env } from './configs/env.js';
 
 const httpServer = createServer(app);
 
